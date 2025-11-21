@@ -50,11 +50,11 @@ const Header = () => {
               <Link to="/dashboard" className={`nav-link ${isActive('/dashboard')}`}>
                 <i className="fas fa-tachometer-alt"></i> Dashboard
               </Link>
-              <Link to="/menu" className={`nav-link ${isActive('/menu')}`}>
-                <i className="fas fa-utensils"></i> Menu
-              </Link>
               <Link to="/orders" className={`nav-link ${isActive('/orders')}`}>
                 <i className="fas fa-clipboard-list"></i> Orders
+              </Link>
+              <Link to="/profile" className={`nav-link ${isActive('/profile')}`}>
+                <i className="fas fa-user-circle"></i> Profile
               </Link>
               <div className="user-profile">
                 <button onClick={handleLogout} className="button button-secondary">

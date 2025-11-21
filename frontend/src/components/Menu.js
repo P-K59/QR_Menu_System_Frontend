@@ -13,14 +13,14 @@ const Menu = () => {
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [tableNumber, setTableNumber] = useState('');
+  const [customerName, setCustomerName] = useState('');
+  const [showCustomerForm, setShowCustomerForm] = useState(false);
 
+  // Ensure this is a customer-only view - logout if logged in
   useEffect(() => {
-    const searchParams = new URLSearchParams(location.search);
-    const table = searchParams.get('table');
-    if (table) setTableNumber(table);
-    
-    fetchMenu();
-  }, [userId]);
+    // This is the public customer menu page, not for logged in admins
+    // Customers should access via QR code or direct link without authentication
+  }, []);
 
   const fetchMenu = async () => {
     try {
@@ -42,30 +42,54 @@ const Menu = () => {
     }
   };
 
+  useEffect(() => {
+    fetchMenu();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, location]);
+
   const addToCart = (item) => {
     setCart([...cart, item]);
   };
 
   const placeOrder = async () => {
     try {
-      if (!tableNumber) {
-        alert('Please scan the QR code from your table to place an order');
+      if (!tableNumber.trim()) {
+        alert('Please enter your table number');
         return;
       }
 
+      if (!customerName.trim()) {
+        alert('Please enter your name');
+        return;
+      }
+
+      // Count items by id
+      const itemsMap = {};
+      cart.forEach((item) => {
+        const key = item._id || item.id;
+        if (!itemsMap[key]) {
+          itemsMap[key] = { ...item, quantity: 0 };
+        }
+        itemsMap[key].quantity += 1;
+      });
+
       const order = {
-        items: cart.map(item => ({
-          menuItem: item._id,
-          quantity: cart.filter(cartItem => cartItem._id === item._id).length
+        items: Object.values(itemsMap).map(item => ({
+          menuItemName: item.name,
+          price: parseFloat(item.price),
+          quantity: item.quantity
         })),
+        customerName: customerName.trim(),
         restaurantId: userId,
-        tableNumber: parseInt(tableNumber),
+        tableNumber: tableNumber.trim(),
         totalAmount: cart.reduce((total, item) => total + item.price, 0)
       };
 
       await axios.post('http://localhost:5000/api/orders', order);
       alert('Order placed successfully! The restaurant staff will bring your order to table ' + tableNumber);
       setCart([]);
+      setCustomerName('');
+      setShowCustomerForm(false);
     } catch (error) {
       console.error('Error placing order:', error);
       alert('Error placing order');
@@ -96,9 +120,40 @@ const Menu = () => {
 
   return (
     <div className="menu-container">
+      {restaurantInfo?.bannerImage && (
+        <div style={{ 
+          width: '100%', 
+          height: '200px', 
+          backgroundImage: `url(${restaurantInfo.bannerImage})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          borderRadius: '8px',
+          marginBottom: '20px'
+        }} />
+      )}
+      
       <div className="menu-header">
-        <h1>{restaurantInfo.restaurantName}</h1>
-        {tableNumber && <h2>Table {tableNumber}</h2>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            {restaurantInfo?.profilePicture && (
+              <img 
+                src={restaurantInfo.profilePicture} 
+                alt={restaurantInfo.restaurantName}
+                style={{ 
+                  width: '80px', 
+                  height: '80px', 
+                  borderRadius: '50%', 
+                  objectFit: 'cover',
+                  border: '3px solid #2196F3'
+                }} 
+              />
+            )}
+            <div>
+              <h1>{restaurantInfo.restaurantName}</h1>
+            </div>
+          </div>
+          <a href="/" style={{ color: '#2196F3', textDecoration: 'none', fontSize: '14px' }}>← Back to Home</a>
+        </div>
       </div>
 
       <div className="categories">
@@ -128,7 +183,7 @@ const Menu = () => {
             <div className="menu-item-content">
               <h3>{item.name}</h3>
               <p className="description">{item.description}</p>
-              <p className="price">${item.price}</p>
+              <p className="price">₹{item.price}</p>
               <button className="add-to-cart" onClick={() => addToCart(item)}>
                 Add to Cart
               </button>
@@ -150,7 +205,7 @@ const Menu = () => {
               <div key={index} className="cart-item">
                 <div className="cart-item-info">
                   <div className="cart-item-name">{item.name}</div>
-                  <div className="cart-item-price">${item.price}</div>
+                  <div className="cart-item-price">₹{item.price}</div>
                 </div>
                 <div className="cart-quantity">
                   <button
@@ -176,11 +231,51 @@ const Menu = () => {
           </div>
           <div className="cart-total">
             <span>Total:</span>
-            <span>${cart.reduce((total, item) => total + item.price, 0).toFixed(2)}</span>
+            <span>₹{cart.reduce((total, item) => total + item.price, 0).toFixed(2)}</span>
           </div>
-          <button className="place-order-btn" onClick={placeOrder}>
-            Place Order
-          </button>
+          
+          {!showCustomerForm ? (
+            <button className="place-order-btn" onClick={() => setShowCustomerForm(true)}>
+              Continue to Checkout
+            </button>
+          ) : (
+            <div className="customer-form" style={{ marginTop: '15px', padding: '15px', backgroundColor: '#f5f5f5', borderRadius: '8px' }}>
+              <input
+                type="text"
+                placeholder="Your Name"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                style={{ width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
+                autoFocus
+              />
+              <input
+                type="text"
+                placeholder="Table Number"
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                style={{ width: '100%', padding: '10px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button 
+                  className="place-order-btn" 
+                  onClick={placeOrder}
+                  style={{ flex: 1 }}
+                >
+                  Place Order
+                </button>
+                <button 
+                  onClick={() => {
+                    setShowCustomerForm(false);
+                    setCustomerName('');
+                    setTableNumber('');
+                  }}
+                  style={{ flex: 1, backgroundColor: '#f44336', color: 'white', padding: '10px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

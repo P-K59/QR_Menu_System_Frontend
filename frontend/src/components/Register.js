@@ -1,95 +1,73 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import './Auth.css';
 
 const Register = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     email: '',
     password: '',
-    confirmPassword: '',
     restaurantName: '',
     tables: ''
   });
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
 
     try {
-      // Client-side validation
       if (!formData.email || !formData.password || !formData.restaurantName || !formData.tables) {
         setError('All fields are required');
-        setLoading(false);
         return;
       }
 
-      // Email validation
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(formData.email)) {
         setError('Please enter a valid email address');
-        setLoading(false);
         return;
       }
 
-      // Password validation
       if (formData.password.length < 6) {
         setError('Password must be at least 6 characters long');
-        setLoading(false);
         return;
       }
 
-      // Format the data
+      const tablesArray = formData.tables
+        .split(',')
+        .map(num => parseInt(num.trim()))
+        .filter(num => !isNaN(num));
+
       const requestData = {
         email: formData.email.trim(),
         password: formData.password,
         restaurantName: formData.restaurantName.trim(),
-        tables: formData.tables.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num))
+        tables: tablesArray
       };
 
-      console.log('Sending registration data:', requestData);
-
       const response = await axios.post('http://localhost:5000/api/users/register', requestData);
-      
-      console.log('Registration response:', response.data);
 
-      if (response.data) {
-        // Clear form and navigate to login
-        setFormData({
-          email: '',
-          password: '',
-          confirmPassword: '',
-          restaurantName: '',
-          tables: ''
-        });
-        navigate('/login', { 
+      if (response.data && response.data.token) {
+        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('userId', response.data.userId);
+        navigate('/dashboard');
+      } else if (response.data) {
+        navigate('/login', {
           state: { message: 'Registration successful! Please login.' }
         });
       }
     } catch (err) {
       console.error('Registration error:', err);
-      setError(
-        err.response?.data?.message || 
-        'Registration failed. Please try again.'
-      );
-    } finally {
-      setLoading(false);
+      setError(err.response?.data?.message || 'Registration failed. Please try again.');
     }
-  };
-
-  const handleTableChange = (e) => {
-    const tables = e.target.value.split(',').map(num => parseInt(num.trim())).filter(num => !isNaN(num));
-    setFormData({ ...formData, tables });
   };
 
   return (
     <div className="auth-container">
       <h2>Register Restaurant</h2>
       <form onSubmit={handleSubmit}>
+        {error && <div className="error-message">{error}</div>}
         <div className="form-group">
           <label>Email:</label>
           <input
@@ -118,11 +96,12 @@ const Register = () => {
           />
         </div>
         <div className="form-group">
-          <label>Table Numbers (comma-separated):</label>
+          <label>Table Numbers (comma-separated, e.g., 1, 2, 3):</label>
           <input
             type="text"
             placeholder="1, 2, 3, 4..."
-            onChange={handleTableChange}
+            value={formData.tables}
+            onChange={(e) => setFormData({ ...formData, tables: e.target.value })}
             required
           />
         </div>

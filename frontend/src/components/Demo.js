@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import QRCode from 'react-qr-code';
+import axios from 'axios';
 import './Demo.css';
 
 const Demo = () => {
@@ -8,7 +9,7 @@ const Demo = () => {
     {
       id: 1,
       name: 'Margherita Pizza',
-      price: 12.99,
+      price: 299,
       description: 'Fresh tomatoes, mozzarella, and basil',
       image: 'https://media.istockphoto.com/id/1168754685/photo/pizza-margarita-with-cheese-top-view-isolated-on-white-background.jpg?s=612x612&w=0&k=20&c=psLRwd-hX9R-S_iYU-sihB4Jx2aUlUr26fkVrxGDfNg=',
       category: 'Pizza'
@@ -30,6 +31,23 @@ const Demo = () => {
     name: '',
     tableNumber: ''
   });
+  const [restaurantIdForDemo, setRestaurantIdForDemo] = useState('');
+  const [restaurantIdFromQr, setRestaurantIdFromQr] = useState('');
+
+  // Initialize view/table from query params so QR links work (e.g. /demo?view=customer&table=2)
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const viewParam = params.get('view');
+      const tableParam = params.get('table');
+      const restParam = params.get('restaurantId');
+      if (viewParam === 'customer') setView('customer');
+      if (tableParam) setCustomerInfo(prev => ({ ...prev, tableNumber: tableParam }));
+      if (restParam) setRestaurantIdFromQr(restParam);
+    } catch (err) {
+      // ignore
+    }
+  }, []);
 
   const handleAddItem = (e) => {
     e.preventDefault();
@@ -50,15 +68,50 @@ const Demo = () => {
     return cart.reduce((sum, item) => sum + parseFloat(item.price), 0).toFixed(2);
   };
 
-  const placeOrder = () => {
+  const placeOrder = async () => {
     if (!customerInfo.name || !customerInfo.tableNumber) {
       alert('Please enter your name and table number');
       return;
     }
-    alert(`Order placed!\nCustomer: ${customerInfo.name}\nTable: ${customerInfo.tableNumber}\nTotal: $${getTotal()}`);
-    setCart([]);
-    setCustomerInfo({ name: '', tableNumber: '' });
-  };
+
+    // Build items array with quantities
+    const itemsMap = {};
+    cart.forEach((item) => {
+      const key = item.id || item._id || item.name;
+      if (!itemsMap[key]) {
+        itemsMap[key] = { name: item.name, price: parseFloat(item.price) || 0, quantity: 0 };
+      }
+      itemsMap[key].quantity += 1;
+    });
+
+    const items = Object.values(itemsMap).map(i => ({ menuItemName: i.name, price: i.price, quantity: i.quantity }));
+
+    const payload = {
+      items,
+      tableNumber: parseInt(customerInfo.tableNumber, 10),
+      customerName: customerInfo.name,
+      totalAmount: parseFloat(getTotal())
+    };
+    // attach restaurantId when available (from QR or demo config)
+    const restIdToUse = restaurantIdFromQr || restaurantIdForDemo;
+    if (restIdToUse) {
+      payload.restaurantId = restIdToUse;
+    }
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/orders', payload);
+      if (res.status === 201) {
+        alert(`Order placed!\nCustomer: ${customerInfo.name}\nTable: ${customerInfo.tableNumber}\nTotal: ₹${getTotal()}`);
+        setCart([]);
+        setCustomerInfo({ name: '', tableNumber: '' });
+      } else {
+        alert('Order failed. Please try again.');
+      }
+    } catch (err) {
+      console.error('Order error:', err);
+      alert('Error placing order. Please try again.');
+    }
+  }
 
   return (
     <div className="demo-container">
@@ -96,7 +149,7 @@ const Demo = () => {
                 />
               </div>
               <div className="form-group">
-                <label>Price ($):</label>
+                <label>Price (₹):</label>
                 <input
                   type="number"
                   value={newItem.price}
@@ -163,7 +216,7 @@ const Demo = () => {
                   <img src={item.image || 'https://via.placeholder.com/150'} alt={item.name} />
                   <h3>{item.name}</h3>
                   <p className="description">{item.description}</p>
-                  <p className="price">${parseFloat(item.price).toFixed(2)}</p>
+                  <p className="price">₹{parseFloat(item.price).toFixed(2)}</p>
                   <p className="category">{item.category}</p>
                   <button 
                     className="delete-item"
@@ -193,12 +246,21 @@ const Demo = () => {
                 }}
               />
             </div>
+            <div className="table-config">
+              <label>Restaurant ID (for demo QR):</label>
+              <input
+                type="text"
+                placeholder="paste restaurant userId here"
+                value={restaurantIdForDemo}
+                onChange={(e) => setRestaurantIdForDemo(e.target.value)}
+              />
+            </div>
             {qrGenerated && menuItems.length > 0 && (
               <div className="qr-grid">
                 <div className="qr-card">
                   <h3>Restaurant Menu QR</h3>
                   <QRCode 
-                    value={`${window.location.origin}/demo?view=customer`}
+                    value={`${window.location.origin}/demo?view=customer${restaurantIdForDemo ? `&restaurantId=${encodeURIComponent(restaurantIdForDemo)}` : ''}`}
                     size={150}
                   />
                   <p>Scan to view menu</p>
@@ -244,7 +306,7 @@ const Demo = () => {
                   <img src={item.image || 'https://via.placeholder.com/150'} alt={item.name} />
                   <h3>{item.name}</h3>
                   <p className="description">{item.description}</p>
-                  <p className="price">${parseFloat(item.price).toFixed(2)}</p>
+                  <p className="price">₹{parseFloat(item.price).toFixed(2)}</p>
                   <button 
                     className="add-to-cart"
                     onClick={() => handleAddToCart(item)}
@@ -265,7 +327,7 @@ const Demo = () => {
                     <img src={item.image || 'https://via.placeholder.com/50'} alt={item.name} />
                     <div className="item-details">
                       <h4>{item.name}</h4>
-                      <p>${parseFloat(item.price).toFixed(2)}</p>
+                      <p>₹{parseFloat(item.price).toFixed(2)}</p>
                     </div>
                     <button 
                       className="remove-item"
@@ -277,8 +339,8 @@ const Demo = () => {
                 ))}
               </div>
               <div className="cart-total">
-                <h4>Total: ${getTotal()}</h4>
-                <button className="place-order" onClick={placeOrder}>
+                <h4>Total: ₹{getTotal()}</h4>
+                <button className="place-order-btn" onClick={placeOrder}>
                   Place Order
                 </button>
               </div>
