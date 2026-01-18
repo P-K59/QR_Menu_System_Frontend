@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useParams, useLocation } from 'react-router-dom';
+import { io } from 'socket.io-client';
+import API_BASE_URL from '../config';
 import './Menu.css';
 
 const Menu = () => {
@@ -22,12 +24,26 @@ const Menu = () => {
     // Customers should access via QR code or direct link without authentication
   }, []);
 
+  // Setup WebSocket listener for menu updates
+  useEffect(() => {
+    const socket = io('${API_BASE_URL}');
+    socket.emit('join', userId);
+    
+    socket.on('menuUpdated', (updatedItem) => {
+      setMenuItems(prevItems => 
+        prevItems.map(item => item._id === updatedItem._id ? updatedItem : item)
+      );
+    });
+
+    return () => socket.disconnect();
+  }, [userId]);
+
   const fetchMenu = async () => {
     try {
       setLoading(true);
       const [menuResponse, restaurantResponse] = await Promise.all([
-        axios.get(`http://localhost:5000/api/menu/${userId}`),
-        axios.get(`http://localhost:5000/api/users/${userId}`)
+        axios.get(`${API_BASE_URL}/api/menu/${userId}`),
+        axios.get(`${API_BASE_URL}/api/users/${userId}`)
       ]);
       
       setMenuItems(menuResponse.data);
@@ -85,7 +101,7 @@ const Menu = () => {
         totalAmount: cart.reduce((total, item) => total + item.price, 0)
       };
 
-      await axios.post('http://localhost:5000/api/orders', order);
+      await axios.post('${API_BASE_URL}/api/orders', order);
       alert('Order placed successfully! The restaurant staff will bring your order to table ' + tableNumber);
       setCart([]);
       setCustomerName('');
@@ -178,14 +194,24 @@ const Menu = () => {
         {menuItems
           .filter(item => selectedCategory === 'all' || item.category === selectedCategory)
           .map((item) => (
-          <div key={item._id} className="menu-item">
+          <div key={item._id} className="menu-item" style={{ opacity: item.available ? 1 : 0.5 }}>
             <img src={item.image || 'https://via.placeholder.com/300x200'} alt={item.name} />
             <div className="menu-item-content">
               <h3>{item.name}</h3>
+              {!item.available && <p style={{ color: '#f44336', fontWeight: 'bold' }}>Unavailable</p>}
               <p className="description">{item.description}</p>
               <p className="price">₹{item.price}</p>
-              <button className="add-to-cart" onClick={() => addToCart(item)}>
-                Add to Cart
+              <button 
+                className="add-to-cart" 
+                onClick={() => addToCart(item)}
+                disabled={!item.available}
+                style={{ 
+                  cursor: item.available ? 'pointer' : 'not-allowed',
+                  opacity: item.available ? 1 : 0.6,
+                  backgroundColor: item.available ? '#2196F3' : '#ccc'
+                }}
+              >
+                {item.available ? 'Add to Cart' : 'Out of Stock'}
               </button>
             </div>
           </div>

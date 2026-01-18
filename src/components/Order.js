@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import API_BASE_URL from '../config';
 import './Order.css';
 
 const Order = () => {
@@ -12,7 +13,7 @@ const Order = () => {
     const userId = localStorage.getItem('userId');
     
     // Connect WebSocket for real-time updates
-    const socket = io('http://localhost:5000');
+    const socket = io('${API_BASE_URL}');
     socket.emit('join', userId);
     
     socket.on('newOrder', (order) => {
@@ -34,7 +35,7 @@ const Order = () => {
     try {
       setLoading(true);
       const restaurantId = localStorage.getItem('userId');
-      const response = await axios.get(`http://localhost:5000/api/orders?restaurantId=${restaurantId}`, {
+      const response = await axios.get(`${API_BASE_URL}/api/orders?restaurantId=${restaurantId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       setOrders(response.data);
@@ -47,7 +48,7 @@ const Order = () => {
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
-      const response = await axios.put(`http://localhost:5000/api/orders/${orderId}`, {
+      const response = await axios.put(`${API_BASE_URL}/api/orders/${orderId}`, {
         status: newStatus
       });
       setOrders(orders.map(order => 

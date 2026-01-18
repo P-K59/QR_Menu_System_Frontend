@@ -2,10 +2,13 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
+import API_BASE_URL from '../config';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const [menuItems, setMenuItems] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [notifications, setNotifications] = useState([]);
   const [newItem, setNewItem] = useState({
     name: '',
     description: '',
@@ -22,23 +25,77 @@ const Dashboard = () => {
     image: ''
   });
 
+  const addNotification = (message, type = 'success', duration = 5000) => {
+    const id = Date.now();
+    const notification = { id, message, type };
+    setNotifications(prev => [...prev, notification]);
+    
+    // Auto remove after duration
+    if (duration > 0) {
+      setTimeout(() => {
+        setNotifications(prev => prev.filter(n => n.id !== id));
+      }, duration);
+    }
+    return id;
+  };
+
+  const handleImageUpload = (e, isEdit = false) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result;
+        if (isEdit) {
+          setEditFormData({ ...editFormData, image: base64String });
+        } else {
+          setNewItem({ ...newItem, image: base64String });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   useEffect(() => {
     const userId = localStorage.getItem('userId');
     
     // Connect to WebSocket
-    const socket = io('http://localhost:5000');
+    const socket = io('${API_BASE_URL}');
     socket.emit('join', userId);
     
     socket.on('newOrder', (order) => {
-      // Play notification sound
-      try { new Audio('/notification.mp3').play(); } catch(e) { /* ignore */ }
+      // Show beautiful notification
+      const itemsList = order.items.map(item => `${item.menuItemName} (x${item.quantity})`).join(', ');
+      addNotification(
+        `🎉 New Order! Table ${order.tableNumber} - ${itemsList}`,
+        'success',
+        7000
+      );
+      
+      // Add order to the orders list if it's pending or process
+      if (order.status === 'pending' || order.status === 'process') {
+        setOrders(prev => [order, ...prev]);
+      }
+      
+      // Play notification sound (optional - no error if file doesn't exist)
+      try { 
+        const audio = new Audio('/notification.mp3');
+        audio.onerror = () => {}; // Silently ignore if file not found
+        audio.play().catch(e => {}); // Ignore play errors
+      } catch(e) { 
+        // Silently ignore any errors
+      }
     });
 
     // Fetch menu items and restaurant info
     const fetchData = async () => {
       try {
-        const menuRes = await axios.get(`http://localhost:5000/api/menu/${userId}`);
+        const menuRes = await axios.get(`${API_BASE_URL}/api/menu/${userId}`);
         setMenuItems(menuRes.data);
+        
+        // Fetch orders
+        const ordersRes = await axios.get(`${API_BASE_URL}/api/orders?restaurantId=${userId}`);
+        // Filter to show only pending and process status
+        setOrders(ordersRes.data.filter(o => o.status === 'pending' || o.status === 'process'));
       } catch (error) {
         console.error('Error fetching data:', error);
       }
@@ -54,13 +111,14 @@ const Dashboard = () => {
     try {
       const token = localStorage.getItem('token');
       const userId = localStorage.getItem('userId');
-      const response = await axios.post('http://localhost:5000/api/menu', { ...newItem, owner: userId }, {
+      const response = await axios.post('${API_BASE_URL}/api/menu', { ...newItem, owner: userId }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMenuItems([...menuItems, response.data]);
       setNewItem({ name: '', description: '', price: '', category: '', image: '' });
+      addNotification(`✓ Menu item "${response.data.name}" added successfully!`, 'success');
     } catch (error) {
-      alert('Error adding menu item: ' + error.response?.data?.message);
+      addNotification(`✗ Error adding menu item: ${error.response?.data?.message || error.message}`, 'error');
     }
   };
 
@@ -106,14 +164,22 @@ const Dashboard = () => {
   const handleUpdateItem = async (id, updatedItem) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.put(`http://localhost:5000/api/menu/${id}`, updatedItem, {
+      const userId = localStorage.getItem('userId');
+      const response = await axios.put(`${API_BASE_URL}/api/menu/${id}`, updatedItem, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMenuItems(menuItems.map(item => 
         item._id === id ? response.data : item
       ));
+      
+      // Emit menu update event to all connected clients
+      const socket = io('${API_BASE_URL}');
+      socket.emit('join', userId);
+      socket.emit('menuUpdated', response.data);
+      
+      addNotification(`✓ Item availability updated!`, 'success', 3000);
     } catch (error) {
-      alert('Error updating menu item: ' + error.response?.data?.message);
+      addNotification(`✗ Error updating menu item: ${error.response?.data?.message || error.message}`, 'error');
     }
   };
 
@@ -121,12 +187,13 @@ const Dashboard = () => {
     if (!window.confirm('Are you sure you want to delete this item?')) return;
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`http://localhost:5000/api/menu/${id}`, {
+      await axios.delete(`${API_BASE_URL}/api/menu/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMenuItems(menuItems.filter(item => item._id !== id));
+      addNotification(`✓ Menu item deleted successfully!`, 'success', 3000);
     } catch (error) {
-      alert('Error deleting menu item: ' + error.response?.data?.message);
+      addNotification(`✗ Error deleting menu item: ${error.response?.data?.message || error.message}`, 'error');
     }
   };
 
@@ -143,25 +210,61 @@ const Dashboard = () => {
 
   const handleSaveEdit = async () => {
     if (!editFormData.name || !editFormData.price) {
-      alert('Name and price are required');
+      addNotification('Name and price are required!', 'warning');
       return;
     }
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.put(`http://localhost:5000/api/menu/${editingItemId}`, editFormData, {
+      const response = await axios.put(`${API_BASE_URL}/api/menu/${editingItemId}`, editFormData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMenuItems(menuItems.map(item => 
         item._id === editingItemId ? response.data : item
       ));
       setEditingItemId(null);
+      addNotification(`✓ "${response.data.name}" updated successfully!`, 'success', 3000);
     } catch (error) {
-      alert('Error updating menu item: ' + error.response?.data?.message);
+      addNotification(`✗ Error updating menu item: ${error.response?.data?.message || error.message}`, 'error');
+    }
+  };
+
+  const handleOrderStatus = async (orderId, newStatus) => {
+    try {
+      const token = localStorage.getItem('token');
+      await axios.put(`${API_BASE_URL}/api/orders/${orderId}`, 
+        { status: newStatus },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      // Remove order from list
+      setOrders(prev => prev.filter(o => o._id !== orderId));
+      
+      const statusText = newStatus === 'complete' ? 'completed' : 'canceled';
+      addNotification(`✓ Order marked as ${statusText}!`, 'success', 3000);
+    } catch (error) {
+      addNotification(`✗ Error updating order: ${error.response?.data?.message || error.message}`, 'error');
     }
   };
 
   return (
     <div className="dashboard-container">
+      {/* Notification Container */}
+      <div className="notification-container">
+        {notifications.map(notification => (
+          <div key={notification.id} className={`notification notification-${notification.type}`}>
+            <div className="notification-content">
+              <span>{notification.message}</span>
+            </div>
+            <button 
+              className="notification-close"
+              onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
+
       <div className="qr-section">
         <h2>📱 Your Unique Restaurant QR Codes</h2>
         <div style={{ backgroundColor: '#e3f2fd', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
@@ -238,12 +341,28 @@ const Dashboard = () => {
             value={newItem.category}
             onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
           />
-          <input
-            type="text"
-            placeholder="Image URL"
-            value={newItem.image}
-            onChange={(e) => setNewItem({ ...newItem, image: e.target.value })}
-          />
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Image URL (or upload below)</label>
+            <input
+              type="text"
+              placeholder="Image URL"
+              value={newItem.image}
+              onChange={(e) => setNewItem({ ...newItem, image: e.target.value })}
+              style={{ width: '100%', padding: '8px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <div style={{ marginBottom: '10px' }}>
+            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Or Upload Image</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleImageUpload(e, false)}
+              style={{ display: 'block', marginBottom: '10px' }}
+            />
+            {newItem.image && newItem.image.startsWith('data:') && (
+              <img src={newItem.image} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px', borderRadius: '4px', marginBottom: '10px' }} />
+            )}
+          </div>
           <button type="submit" className="button">Add Item</button>
         </form>
 
@@ -284,6 +403,7 @@ const Dashboard = () => {
                     <option value="Desserts">Desserts</option>
                     <option value="Beverages">Beverages</option>
                   </select>
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Image URL (or upload below)</label>
                   <input
                     type="text"
                     placeholder="Image URL"
@@ -291,6 +411,16 @@ const Dashboard = () => {
                     onChange={(e) => setEditFormData({...editFormData, image: e.target.value})}
                     style={{ width: '100%', marginBottom: '10px', padding: '8px' }}
                   />
+                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Or Upload New Image</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e, true)}
+                    style={{ display: 'block', marginBottom: '10px', width: '100%' }}
+                  />
+                  {editFormData.image && editFormData.image.startsWith('data:') && (
+                    <img src={editFormData.image} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px', borderRadius: '4px', marginBottom: '10px' }} />
+                  )}
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={handleSaveEdit} style={{ flex: 1, padding: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
                     <button onClick={() => setEditingItemId(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
@@ -318,6 +448,68 @@ const Dashboard = () => {
           ))}
         </div>
       </div>
+
+      {/* Recent Orders Section */}
+      {orders.length > 0 && (
+        <div className="orders-section">
+          <h2>📋 Recent Orders</h2>
+          <div className="orders-container">
+            {orders.map(order => (
+              <div key={order._id} className="order-card">
+                <div className="order-header">
+                  <div className="order-header-info">
+                    <h3>Table {order.tableNumber}</h3>
+                    <p className="customer-name">{order.customerName || 'Guest'}</p>
+                  </div>
+                  <span className="order-time">
+                    {new Date(order.createdAt).toLocaleTimeString()}
+                  </span>
+                </div>
+                
+                <div className="order-items">
+                  <strong>Items:</strong>
+                  <ul>
+                    {order.items.map((item, idx) => (
+                      <li key={idx}>
+                        {item.menuItemName} × {item.quantity}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                
+                <div className="order-footer">
+                  <div className="order-total">
+                    <strong>₹{order.totalAmount}</strong>
+                  </div>
+                  
+                  <div className="order-status">
+                    <span className={`status-badge status-${order.status}`}>{order.status}</span>
+                  </div>
+                  
+                  <div className="order-actions">
+                    {order.status !== 'complete' && (
+                      <button 
+                        className="btn-complete"
+                        onClick={() => handleOrderStatus(order._id, 'complete')}
+                      >
+                        ✓ Complete
+                      </button>
+                    )}
+                    {order.status !== 'cancelled' && (
+                      <button 
+                        className="btn-cancel"
+                        onClick={() => handleOrderStatus(order._id, 'cancelled')}
+                      >
+                        ✕ Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
+import API_BASE_URL from '../config'
 import './Auth.css';
 
 const Profile = () => {
@@ -24,6 +25,55 @@ const Profile = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const handleImageUpload = (e, fieldName) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Check file size (max 1MB per image)
+      if (file.size > 1024 * 1024) {
+        setError('Image size should be less than 1MB. Please compress the image.');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        // Compress image using canvas
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Reduce size if too large
+          const maxWidth = fieldName === 'profilePicture' ? 300 : 1000;
+          const maxHeight = fieldName === 'profilePicture' ? 300 : 400;
+          
+          if (width > height) {
+            if (width > maxWidth) {
+              height = Math.round(height * maxWidth / width);
+              width = maxWidth;
+            }
+          } else {
+            if (height > maxHeight) {
+              width = Math.round(width * maxHeight / height);
+              height = maxHeight;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Compress to JPEG with quality 0.7
+          const compressedImage = canvas.toDataURL('image/jpeg', 0.7);
+          setFormData({ ...formData, [fieldName]: compressedImage });
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   useEffect(() => {
     fetchUserInfo();
   }, []);
@@ -31,7 +81,7 @@ const Profile = () => {
   const fetchUserInfo = async () => {
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.get(`http://localhost:5000/api/users/${userId}`);
+      const response = await axios.get(`${API_BASE_URL}/api/users/${userId}`);
       setRestaurantInfo(response.data);
       setFormData({
         restaurantName: response.data.restaurantName || '',
@@ -55,6 +105,13 @@ const Profile = () => {
 
     try {
       const userId = localStorage.getItem('userId');
+      
+      if (!formData.restaurantName || !formData.restaurantName.trim()) {
+        setError('Restaurant name is required');
+        setSaving(false);
+        return;
+      }
+      
       const tablesArray = formData.tables
         .split(',')
         .map(num => parseInt(num.trim()))
@@ -63,17 +120,18 @@ const Profile = () => {
       const updateData = {
         restaurantName: formData.restaurantName,
         tables: tablesArray,
-        profilePicture: formData.profilePicture,
-        bannerImage: formData.bannerImage
+        profilePicture: formData.profilePicture || '',
+        bannerImage: formData.bannerImage || ''
       };
 
-      const response = await axios.put(`http://localhost:5000/api/users/${userId}`, updateData);
+      const response = await axios.put(`${API_BASE_URL}/api/users/${userId}`, updateData);
       setRestaurantInfo(response.data);
       setSuccess('Profile updated successfully!');
       setEditMode(false);
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update profile');
+      console.error('Profile update error:', err);
+      setError(err.response?.data?.message || err.message || 'Failed to update profile');
     } finally {
       setSaving(false);
     }
@@ -98,7 +156,7 @@ const Profile = () => {
 
     try {
       const userId = localStorage.getItem('userId');
-      await axios.post(`http://localhost:5000/api/users/${userId}/change-password`, {
+      await axios.post(`${API_BASE_URL}/api/users/${userId}/change-password`, {
         currentPassword: passwordChange.currentPassword,
         newPassword: passwordChange.newPassword
       });
@@ -183,12 +241,12 @@ const Profile = () => {
             </div>
 
             <div className="form-group">
-              <label>Profile Picture URL</label>
+              <label>Profile Picture</label>
               <input
-                type="text"
-                placeholder="Enter image URL"
-                value={formData.profilePicture}
-                onChange={(e) => setFormData({ ...formData, profilePicture: e.target.value })}
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleImageUpload(e, 'profilePicture')}
+                style={{ display: 'block', marginBottom: '10px' }}
               />
               {formData.profilePicture && (
                 <div style={{ marginTop: '10px' }}>
@@ -199,12 +257,12 @@ const Profile = () => {
             </div>
 
             <div className="form-group">
-              <label>Banner Image URL</label>
+              <label>Banner Image</label>
               <input
-                type="text"
-                placeholder="Enter banner image URL"
-                value={formData.bannerImage}
-                onChange={(e) => setFormData({ ...formData, bannerImage: e.target.value })}
+                type="file"
+                accept="image/*"
+                onChange={(e) => handleImageUpload(e, 'bannerImage')}
+                style={{ display: 'block', marginBottom: '10px' }}
               />
               {formData.bannerImage && (
                 <div style={{ marginTop: '10px' }}>
