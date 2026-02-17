@@ -257,6 +257,13 @@ const Dashboard = () => {
     // Only show orders that are NOT complete or cancelled in the live board
     const liveOrders = orders.filter(o => o.status !== 'complete' && o.status !== 'cancelled');
 
+    // Stats Calculation
+    const totalOrders = orders.filter(o => o.status !== 'cancelled').length;
+    const activeOrders = liveOrders.length;
+    const totalRevenue = orders
+      .filter(o => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+
     const columns = {
       pending: liveOrders.filter(o => o.status === 'pending'),
       process: liveOrders.filter(o => o.status === 'process'),
@@ -264,41 +271,68 @@ const Dashboard = () => {
     };
 
     return (
-      <div className="kanban-board">
-        {/* Pending Column */}
-        <div className="kanban-column status-pending">
-          <h3>🕒 Pending <span className="count">{columns.pending.length}</span></h3>
-          {columns.pending.map(order => (
-            <OrderCard key={order._id} order={order}
-              onNext={() => updateOrderStatus(order._id, 'process')}
-              onCancel={() => updateOrderStatus(order._id, 'cancelled')}
-            />
-          ))}
+      <div className="orders-tab-container">
+        {/* Statistics Bar */}
+        <div className="stats-overview-bar">
+          <div className="stats-card-premium">
+            <div className="stats-icon">📊</div>
+            <div className="stats-data">
+              <span className="stats-label">Today's Orders</span>
+              <span className="stats-value">{totalOrders}</span>
+            </div>
+          </div>
+          <div className="stats-card-premium">
+            <div className="stats-icon">🔥</div>
+            <div className="stats-data">
+              <span className="stats-label">Active Now</span>
+              <span className="stats-value">{activeOrders}</span>
+            </div>
+          </div>
+          <div className="stats-card-premium">
+            <div className="stats-icon">💰</div>
+            <div className="stats-data">
+              <span className="stats-label">Total Revenue</span>
+              <span className="stats-value">₹{totalRevenue.toFixed(2)}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Processing Column */}
-        <div className="kanban-column status-process">
-          <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
-          {columns.process.map(order => (
-            <OrderCard key={order._id} order={order}
-              onPrev={() => updateOrderStatus(order._id, 'pending')}
-              onNext={() => updateOrderStatus(order._id, 'ready')}
-              onPrint={() => handlePrintBill(order)}
-            />
-          ))}
-        </div>
+        <div className="kanban-board">
+          {/* Pending Column */}
+          <div className="kanban-column status-pending">
+            <h3>🕒 Pending <span className="count">{columns.pending.length}</span></h3>
+            {columns.pending.map(order => (
+              <OrderCard key={order._id} order={order}
+                onNext={() => updateOrderStatus(order._id, 'process')}
+                onCancel={() => updateOrderStatus(order._id, 'cancelled')}
+              />
+            ))}
+          </div>
 
-        {/* Completed/Ready Column */}
-        <div className="kanban-column status-complete">
-          <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
-          {columns.ready.map(order => (
-            <OrderCard key={order._id} order={order}
-              onPrev={() => updateOrderStatus(order._id, 'process')}
-              onNext={() => updateOrderStatus(order._id, 'complete')}
-              onPrint={() => handlePrintBill(order)}
-              isReady
-            />
-          ))}
+          {/* Processing Column */}
+          <div className="kanban-column status-process">
+            <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
+            {columns.process.map(order => (
+              <OrderCard key={order._id} order={order}
+                onPrev={() => updateOrderStatus(order._id, 'pending')}
+                onNext={() => updateOrderStatus(order._id, 'ready')}
+                onPrint={() => handlePrintBill(order)}
+              />
+            ))}
+          </div>
+
+          {/* Completed/Ready Column */}
+          <div className="kanban-column status-complete">
+            <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
+            {columns.ready.map(order => (
+              <OrderCard key={order._id} order={order}
+                onPrev={() => updateOrderStatus(order._id, 'process')}
+                onNext={() => updateOrderStatus(order._id, 'complete')}
+                onPrint={() => handlePrintBill(order)}
+                isReady
+              />
+            ))}
+          </div>
         </div>
       </div>
     );
