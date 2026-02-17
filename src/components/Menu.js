@@ -26,7 +26,7 @@ const Menu = () => {
 
   // Setup WebSocket listener for menu updates
   useEffect(() => {
-    const socket = io('${API_BASE_URL}');
+    const socket = io(`${API_BASE_URL}`);
     socket.emit('join', userId);
     
     socket.on('menuUpdated', (updatedItem) => {
@@ -101,7 +101,7 @@ const Menu = () => {
         totalAmount: cart.reduce((total, item) => total + item.price, 0)
       };
 
-      await axios.post('${API_BASE_URL}/api/orders', order);
+      await axios.post(`${API_BASE_URL}/api/orders`, order);
       alert('Order placed successfully! The restaurant staff will bring your order to table ' + tableNumber);
       setCart([]);
       setCustomerName('');

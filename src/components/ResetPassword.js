@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
+import API_BASE_URL from '../config';
 import './Auth.css';
 
 const ResetPassword = () => {
@@ -67,7 +68,7 @@ const ResetPassword = () => {
     setLoading(true);
 
     try {
-      await axios.post('http://localhost:5000/api/users/reset-password', {
+      await axios.post(`${API_BASE_URL}/api/users/reset-password`, {
         email: formData.email,
         token: formData.token,
         newPassword: formData.newPassword

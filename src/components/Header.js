@@ -29,6 +29,12 @@ const Header = () => {
     return location.pathname === path ? 'active' : '';
   };
 
+  // Don't show header on customer menu pages
+  const isCustomerPage = location.pathname.startsWith('/menu/');
+  if (isCustomerPage) {
+    return null;
+  }
+
   return (
     <header className={`header ${isScrolled ? 'scrolled' : ''}`}>
       <div className="header-container">

@@ -59,7 +59,7 @@ const Dashboard = () => {
     const userId = localStorage.getItem('userId');
     
     // Connect to WebSocket
-    const socket = io('${API_BASE_URL}');
+    const socket = io(`${API_BASE_URL}`);
     socket.emit('join', userId);
     
     socket.on('newOrder', (order) => {
@@ -111,7 +111,7 @@ const Dashboard = () => {
     try {
       const token = localStorage.getItem('token');
       const userId = localStorage.getItem('userId');
-      const response = await axios.post('${API_BASE_URL}/api/menu', { ...newItem, owner: userId }, {
+      const response = await axios.post(`${API_BASE_URL}/api/menu`, { ...newItem, owner: userId }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMenuItems([...menuItems, response.data]);
@@ -173,7 +173,7 @@ const Dashboard = () => {
       ));
       
       // Emit menu update event to all connected clients
-      const socket = io('${API_BASE_URL}');
+      const socket = io(`${API_BASE_URL}`);
       socket.emit('join', userId);
       socket.emit('menuUpdated', response.data);
       
