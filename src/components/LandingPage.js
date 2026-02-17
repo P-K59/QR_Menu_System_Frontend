@@ -6,94 +6,146 @@ import './LandingPage.css';
 const LandingPage = () => {
   return (
     <div className="landing-page">
-      {/* Hero Section */}
+      {/* Hero Section with Mesh Gradient */}
       <section className="hero-section">
-        <div className="hero-content">
-          <h1>Smart QR Menu System</h1>
-          <p>Transform your restaurant with digital menus and contactless ordering</p>
-          <div className="hero-buttons">
-            <Link to="/register" className="button">Get Started</Link>
-            <Link to="/demo" className="button button-secondary">View Demo</Link>
+        <div className="hero-mesh"></div>
+        <div className="container">
+          <div className="hero-content">
+            <div className="hero-badge animate-fade-in">
+              <span className="badge-dot"></span>
+              The Future of Dining is Here
+            </div>
+            <h1 className="hero-title animate-slide-up">
+              Elevate Your Restaurant with <span className="text-gradient">Smart Digital Menus</span>
+            </h1>
+            <p className="hero-subtitle animate-slide-up-delayed">
+              Transform your paper menu into a stunning digital experience.
+              Increase efficiency and delight your customers with QR Menu Pro.
+            </p>
+            <div className="hero-cta animate-slide-up-further">
+              <Link to="/register" className="btn-hero-primary">
+                Launch Your Menu
+                <i className="fas fa-arrow-right"></i>
+              </Link>
+              <Link to="/demo" className="btn-hero-secondary">
+                View Interactive Demo
+              </Link>
+            </div>
           </div>
-        </div>
-        <div className="hero-image">
-          <QRCode value="https://demo-menu.com" size={200} />
+          <div className="hero-visual animate-float">
+            <div className="qr-card-premium">
+              <div className="qr-header">
+                <i className="fas fa-qrcode"></i>
+                <span>SCAN ME</span>
+              </div>
+              <div className="qr-body">
+                <QRCode value={`${window.location.origin}/demo`} size={220} fgColor="#2d3436" />
+              </div>
+              <div className="qr-footer">
+                <p>Try it yourself</p>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      {/* Features Section */}
+      {/* Stats Shoutout */}
+      <section className="stats-shoutout">
+        <div className="stats-grid">
+          <div className="stat-item">
+            <span className="stat-number">500+</span>
+            <span className="stat-label">Restaurants</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-number">50k+</span>
+            <span className="stat-label">Monthly Orders</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-number">4.9/5</span>
+            <span className="stat-label">User Rating</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Modern Features Grid */}
       <section className="features-section">
-        <h2>Features</h2>
-        <div className="features-grid">
-          <div className="feature-card">
-            <div className="feature-icon">📱</div>
-            <h3>Digital Menu</h3>
-            <p>Easy to update menu with prices and images</p>
+        <div className="container">
+          <div className="section-header">
+            <h2 className="section-title">Seamless Experience</h2>
+            <p className="section-subtitle">Powerful features designed to make your operations smoother.</p>
           </div>
-          <div className="feature-card">
-            <div className="feature-icon">🔄</div>
-            <h3>Real-time Updates</h3>
-            <p>Instantly update menu items and availability</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon">🛒</div>
-            <h3>Order Management</h3>
-            <p>Track and manage orders efficiently</p>
-          </div>
-          <div className="feature-card">
-            <div className="feature-icon">📊</div>
-            <h3>Analytics</h3>
-            <p>Get insights about your menu performance</p>
-          </div>
-        </div>
-      </section>
-
-      {/* How It Works Section */}
-      <section className="how-it-works-section">
-        <h2>How It Works</h2>
-        <div className="steps-container">
-          <div className="step">
-            <div className="step-number">1</div>
-            <h3>Register Restaurant</h3>
-            <p>Create an account for your restaurant</p>
-          </div>
-          <div className="step">
-            <div className="step-number">2</div>
-            <h3>Add Menu Items</h3>
-            <p>Upload your menu with images and prices</p>
-          </div>
-          <div className="step">
-            <div className="step-number">3</div>
-            <h3>Get QR Code</h3>
-            <p>Place QR codes on your tables</p>
-          </div>
-          <div className="step">
-            <div className="step-number">4</div>
-            <h3>Receive Orders</h3>
-            <p>Get instant notifications for new orders</p>
+          <div className="features-grid">
+            <div className="feature-card">
+              <div className="feature-icon-wrapper color-1">
+                <i className="fas fa-magic"></i>
+              </div>
+              <h3>Instant Updates</h3>
+              <p>Change prices or hide sold-out items in real-time. No reprinting costs, ever.</p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon-wrapper color-2">
+                <i className="fas fa-bolt"></i>
+              </div>
+              <h3>Order Tracking</h3>
+              <p>Manage pending, processing, and ready orders with our intuitive Kanban board.</p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon-wrapper color-3">
+                <i className="fas fa-chart-line"></i>
+              </div>
+              <h3>Smart Analytics</h3>
+              <p>Gain insights into your most popular dishes and peak ordering hours.</p>
+            </div>
+            <div className="feature-card">
+              <div className="feature-icon-wrapper color-4">
+                <i className="fas fa-user-shield"></i>
+              </div>
+              <h3>Contactless Admin</h3>
+              <p>Let your staff focus on service while customers order directly from their phones.</p>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Demo Section */}
-      <section className="demo-section">
-        <div className="demo-content">
-          <h2>Try Demo Menu</h2>
-          <p>Scan the QR code or click below to view a sample menu</p>
-          <div className="demo-qr">
-            <QRCode value="https://demo-menu.com" size={150} />
+      {/* How it Works - Pull Quote Style */}
+      <section className="how-it-works-modern">
+        <div className="container">
+          <h2 className="section-title text-center">Get Live in 3 Easy Steps</h2>
+          <div className="modern-steps">
+            <div className="modern-step">
+              <div className="step-count">01</div>
+              <div className="step-info">
+                <h3>Sign Up</h3>
+                <p>Register your restaurant and define your table layout in seconds.</p>
+              </div>
+            </div>
+            <div className="modern-step">
+              <div className="step-count">02</div>
+              <div className="step-info">
+                <h3>Build Menu</h3>
+                <p>Add categories and dishes with beautiful images and clear pricing.</p>
+              </div>
+            </div>
+            <div className="modern-step">
+              <div className="step-count">03</div>
+              <div className="step-info">
+                <h3>Print QR</h3>
+                <p>Download your unique QR codes and place them on your dining tables.</p>
+              </div>
+            </div>
           </div>
-          <Link to="/demo" className="button">View Demo Menu</Link>
         </div>
       </section>
 
-      {/* Call to Action */}
-      <section className="cta-section">
-        <h2>Ready to Digitize Your Menu?</h2>
-        <p>Join hundreds of restaurants already using our system</p>
-        <div className="cta-buttons">
-          <Link to="/register" className="button">Get Started Now</Link>
-          <Link to="/contact" className="button button-secondary">Contact Sales</Link>
+      {/* Final Call to Action with Mesh */}
+      <section className="cta-modern">
+        <div className="cta-overlay-mesh"></div>
+        <div className="container">
+          <div className="cta-content">
+            <h2>Ready to transform your dining?</h2>
+            <p>Join the digital revolution and give your customers a premium experience.</p>
+            <Link to="/register" className="btn-hero-primary">Start Free Trial</Link>
+          </div>
         </div>
       </section>
     </div>

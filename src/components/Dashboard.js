@@ -6,96 +6,58 @@ import API_BASE_URL from '../config';
 import './Dashboard.css';
 
 const Dashboard = () => {
+  const [activeTab, setActiveTab] = useState('orders'); // orders, menu, settings
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
   const [notifications, setNotifications] = useState([]);
-  const [newItem, setNewItem] = useState({
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState('add'); // add, edit
+  const [currentItem, setCurrentItem] = useState(null);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    return localStorage.getItem('soundEnabled') !== 'false';
+  });
+  const [restaurantData, setRestaurantData] = useState(null);
+  const [tableInput, setTableInput] = useState('');
+  const [printOrder, setPrintOrder] = useState(null);
+
+  // Form State
+  const [formData, setFormData] = useState({
     name: '',
     description: '',
     price: '',
     category: '',
     image: ''
   });
-  const [editingItemId, setEditingItemId] = useState(null);
-  const [editFormData, setEditFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    category: '',
-    image: ''
-  });
 
-  const addNotification = (message, type = 'success', duration = 5000) => {
-    const id = Date.now();
-    const notification = { id, message, type };
-    setNotifications(prev => [...prev, notification]);
-    
-    // Auto remove after duration
-    if (duration > 0) {
-      setTimeout(() => {
-        setNotifications(prev => prev.filter(n => n.id !== id));
-      }, duration);
-    }
-    return id;
-  };
-
-  const handleImageUpload = (e, isEdit = false) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result;
-        if (isEdit) {
-          setEditFormData({ ...editFormData, image: base64String });
-        } else {
-          setNewItem({ ...newItem, image: base64String });
-        }
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
+  // Fetch initial data
   useEffect(() => {
     const userId = localStorage.getItem('userId');
-    
-    // Connect to WebSocket
+
+    // Socket Setup
     const socket = io(`${API_BASE_URL}`);
     socket.emit('join', userId);
-    
+
     socket.on('newOrder', (order) => {
-      // Show beautiful notification
-      const itemsList = order.items.map(item => `${item.menuItemName} (x${item.quantity})`).join(', ');
-      addNotification(
-        `🎉 New Order! Table ${order.tableNumber} - ${itemsList}`,
-        'success',
-        7000
-      );
-      
-      // Add order to the orders list if it's pending or process
-      if (order.status === 'pending' || order.status === 'process') {
-        setOrders(prev => [order, ...prev]);
-      }
-      
-      // Play notification sound (optional - no error if file doesn't exist)
-      try { 
-        const audio = new Audio('/notification.mp3');
-        audio.onerror = () => {}; // Silently ignore if file not found
-        audio.play().catch(e => {}); // Ignore play errors
-      } catch(e) { 
-        // Silently ignore any errors
-      }
+      addNotification(`🎉 New Order! Table ${order.tableNumber}`, 'success');
+      setOrders(prev => [order, ...prev]);
+      if (soundEnabled) playNotificationSound();
     });
 
-    // Fetch menu items and restaurant info
+    socket.on('orderUpdated', (updatedOrder) => {
+      setOrders(prev => prev.map(o => o._id === updatedOrder._id ? updatedOrder : o));
+    });
+
     const fetchData = async () => {
       try {
-        const menuRes = await axios.get(`${API_BASE_URL}/api/menu/${userId}`);
+        const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+        const [menuRes, ordersRes, userRes] = await Promise.all([
+          axios.get(`${API_BASE_URL}/api/menu/${userId}`),
+          axios.get(`${API_BASE_URL}/api/orders`, { headers }),
+          axios.get(`${API_BASE_URL}/api/users/${userId}`, { headers })
+        ]);
         setMenuItems(menuRes.data);
-        
-        // Fetch orders
-        const ordersRes = await axios.get(`${API_BASE_URL}/api/orders?restaurantId=${userId}`);
-        // Filter to show only pending and process status
-        setOrders(ordersRes.data.filter(o => o.status === 'pending' || o.status === 'process'));
+        setOrders(ordersRes.data);
+        setRestaurantData(userRes.data);
       } catch (error) {
         console.error('Error fetching data:', error);
       }
@@ -104,414 +66,640 @@ const Dashboard = () => {
     fetchData();
 
     return () => socket.disconnect();
-  }, []);
+  }, [soundEnabled]);
 
-  const handleAddItem = async (e) => {
-    e.preventDefault();
-    try {
-      const token = localStorage.getItem('token');
-      const userId = localStorage.getItem('userId');
-      const response = await axios.post(`${API_BASE_URL}/api/menu`, { ...newItem, owner: userId }, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMenuItems([...menuItems, response.data]);
-      setNewItem({ name: '', description: '', price: '', category: '', image: '' });
-      addNotification(`✓ Menu item "${response.data.name}" added successfully!`, 'success');
-    } catch (error) {
-      addNotification(`✗ Error adding menu item: ${error.response?.data?.message || error.message}`, 'error');
-    }
+  const addNotification = (message, type = 'success') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 5000);
   };
 
-  // Download QR code as PNG
-  const downloadQRCode = (qrElement, filename) => {
-    try {
-      const svg = qrElement.querySelector('svg');
-      if (!svg) {
-        alert('QR code not found');
-        return;
-      }
-      const canvas = document.createElement('canvas');
-      const size = 400;
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      const serializer = new XMLSerializer();
-      const svgStr = serializer.serializeToString(svg);
-      const blob = new Blob([svgStr], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const img = new Image();
-      img.onload = () => {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, size, size);
-        ctx.drawImage(img, 0, 0, size, size);
-        URL.revokeObjectURL(url);
-        const png = canvas.toDataURL('image/png');
-        const link = document.createElement('a');
-        link.href = png;
-        link.download = filename || 'qr.png';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+  const playNotificationSound = () => {
+    const audio = new Audio('/notification.mp3');
+    audio.play().catch(() => { });
+  };
+
+  // Menu Actions
+  const handleOpenModal = (mode, item = null) => {
+    setModalMode(mode);
+    setCurrentItem(item);
+    if (item) {
+      setFormData({
+        name: item.name,
+        description: item.description,
+        price: item.price,
+        category: item.category,
+        image: item.image
+      });
+    } else {
+      setFormData({ name: '', description: '', price: '', category: '', image: '' });
+    }
+    setShowModal(true);
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, image: reader.result });
       };
-      img.onerror = () => alert('Failed to render QR code');
-      img.src = url;
-    } catch (err) {
-      console.error('Download error:', err);
-      alert('Failed to download QR code');
+      reader.readAsDataURL(file);
     }
   };
 
-  const handleUpdateItem = async (id, updatedItem) => {
+  const handleSaveItem = async (e) => {
+    e.preventDefault();
+    const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+    const userId = localStorage.getItem('userId');
+
     try {
-      const token = localStorage.getItem('token');
-      const userId = localStorage.getItem('userId');
-      const response = await axios.put(`${API_BASE_URL}/api/menu/${id}`, updatedItem, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMenuItems(menuItems.map(item => 
-        item._id === id ? response.data : item
-      ));
-      
-      // Emit menu update event to all connected clients
-      const socket = io(`${API_BASE_URL}`);
-      socket.emit('join', userId);
-      socket.emit('menuUpdated', response.data);
-      
-      addNotification(`✓ Item availability updated!`, 'success', 3000);
+      if (modalMode === 'add') {
+        const res = await axios.post(`${API_BASE_URL}/api/menu`, { ...formData, owner: userId }, { headers });
+        setMenuItems([...menuItems, res.data]);
+        addNotification('Item added successfully!');
+      } else {
+        const res = await axios.put(`${API_BASE_URL}/api/menu/${currentItem._id}`, formData, { headers });
+        setMenuItems(menuItems.map(i => i._id === currentItem._id ? res.data : i));
+        addNotification('Item updated successfully!');
+      }
+      setShowModal(false);
     } catch (error) {
-      addNotification(`✗ Error updating menu item: ${error.response?.data?.message || error.message}`, 'error');
+      addNotification(error.response?.data?.message || 'Error saving item', 'error');
+    }
+  };
+
+  const toggleAvailability = async (item) => {
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const res = await axios.put(`${API_BASE_URL}/api/menu/${item._id}`,
+        { available: !item.available },
+        { headers }
+      );
+      setMenuItems(menuItems.map(i => i._id === item._id ? res.data : i));
+      addNotification(`Item marked as ${!item.available ? 'Available' : 'Unavailable'}`);
+    } catch (error) {
+      console.error(error);
     }
   };
 
   const handleDeleteItem = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    if (!window.confirm('Delete this item?')) return;
     try {
-      const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/api/menu/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMenuItems(menuItems.filter(item => item._id !== id));
-      addNotification(`✓ Menu item deleted successfully!`, 'success', 3000);
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      await axios.delete(`${API_BASE_URL}/api/menu/${id}`, { headers });
+      setMenuItems(menuItems.filter(i => i._id !== id));
+      addNotification('Item deleted');
     } catch (error) {
-      addNotification(`✗ Error deleting menu item: ${error.response?.data?.message || error.message}`, 'error');
+      console.error(error);
     }
   };
 
-  const handleEditItem = (item) => {
-    setEditingItemId(item._id);
-    setEditFormData({
-      name: item.name,
-      description: item.description,
-      price: item.price,
-      category: item.category,
-      image: item.image
-    });
+  // Order Actions
+  const updateOrderStatus = async (orderId, status) => {
+    try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const res = await axios.put(`${API_BASE_URL}/api/orders/${orderId}`, { status }, { headers });
+
+      setOrders(prevOrders => prevOrders.map(o => o._id === orderId ? res.data : o));
+
+      if (status === 'complete' || status === 'cancelled') {
+        addNotification(`Order ${status === 'complete' ? 'Completed' : 'Cancelled'}`, 'success');
+      }
+    } catch (error) {
+      console.error('Error updating order status:', error.response?.data || error.message);
+      addNotification(`Error: ${error.response?.data?.message || 'Update failed'}`, 'error');
+    }
   };
 
-  const handleSaveEdit = async () => {
-    if (!editFormData.name || !editFormData.price) {
-      addNotification('Name and price are required!', 'warning');
+  const handlePrintBill = (order) => {
+    setPrintOrder(order);
+
+    // Give state time to render the printable-bill-template before printing
+    setTimeout(() => {
+      window.print();
+      setPrintOrder(null);
+    }, 200);
+
+    // Trigger billed status update
+    if (order.status !== 'billed' && order.status !== 'complete') {
+      updateOrderStatus(order._id, 'billed');
+    }
+  };
+
+  // Restaurant Actions
+  const handleUpdateTables = async (newTables) => {
+    try {
+      const userId = localStorage.getItem('userId');
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const res = await axios.put(`${API_BASE_URL}/api/users/${userId}`, {
+        restaurantName: restaurantData.restaurantName,
+        tables: newTables
+      }, { headers });
+      setRestaurantData(res.data);
+      addNotification('Tables updated successfully', 'success');
+    } catch (error) {
+      console.error(error);
+      addNotification('Error updating tables', 'error');
+    }
+  };
+
+  const addTable = () => {
+    const num = parseInt(tableInput);
+    if (!num || isNaN(num)) return;
+    if (restaurantData.tables.includes(num)) {
+      addNotification('Table already exists', 'error');
       return;
     }
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.put(`${API_BASE_URL}/api/menu/${editingItemId}`, editFormData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMenuItems(menuItems.map(item => 
-        item._id === editingItemId ? response.data : item
-      ));
-      setEditingItemId(null);
-      addNotification(`✓ "${response.data.name}" updated successfully!`, 'success', 3000);
-    } catch (error) {
-      addNotification(`✗ Error updating menu item: ${error.response?.data?.message || error.message}`, 'error');
-    }
+    const newTables = [...restaurantData.tables, num].sort((a, b) => a - b);
+    handleUpdateTables(newTables);
+    setTableInput('');
   };
 
-  const handleOrderStatus = async (orderId, newStatus) => {
-    try {
-      const token = localStorage.getItem('token');
-      await axios.put(`${API_BASE_URL}/api/orders/${orderId}`, 
-        { status: newStatus },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      // Remove order from list
-      setOrders(prev => prev.filter(o => o._id !== orderId));
-      
-      const statusText = newStatus === 'complete' ? 'completed' : 'canceled';
-      addNotification(`✓ Order marked as ${statusText}!`, 'success', 3000);
-    } catch (error) {
-      addNotification(`✗ Error updating order: ${error.response?.data?.message || error.message}`, 'error');
-    }
+  const removeTable = (num) => {
+    const newTables = restaurantData.tables.filter(t => t !== num);
+    handleUpdateTables(newTables);
   };
+  const downloadQRCode = () => {
+    const svg = document.querySelector('.settings-qr-container svg');
+    if (!svg) {
+      alert('QR code not found');
+      return;
+    }
+    const canvas = document.createElement('canvas');
+    const size = 400;
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(svg);
+    const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+      ctx.drawImage(img, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      const png = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = png;
+      link.download = 'restaurant-qr.png';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+    img.src = url;
+  };
+
+  // Render Functions
+  const renderOrders = () => {
+    // Only show orders that are NOT complete or cancelled in the live board
+    const liveOrders = orders.filter(o => o.status !== 'complete' && o.status !== 'cancelled');
+
+    const columns = {
+      pending: liveOrders.filter(o => o.status === 'pending'),
+      process: liveOrders.filter(o => o.status === 'process'),
+      ready: liveOrders.filter(o => o.status === 'ready' || o.status === 'billed')
+    };
+
+    return (
+      <div className="kanban-board">
+        {/* Pending Column */}
+        <div className="kanban-column status-pending">
+          <h3>🕒 Pending <span className="count">{columns.pending.length}</span></h3>
+          {columns.pending.map(order => (
+            <OrderCard key={order._id} order={order}
+              onNext={() => updateOrderStatus(order._id, 'process')}
+              onCancel={() => updateOrderStatus(order._id, 'cancelled')}
+            />
+          ))}
+        </div>
+
+        {/* Processing Column */}
+        <div className="kanban-column status-process">
+          <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
+          {columns.process.map(order => (
+            <OrderCard key={order._id} order={order}
+              onPrev={() => updateOrderStatus(order._id, 'pending')}
+              onNext={() => updateOrderStatus(order._id, 'ready')}
+              onPrint={() => handlePrintBill(order)}
+            />
+          ))}
+        </div>
+
+        {/* Completed/Ready Column */}
+        <div className="kanban-column status-complete">
+          <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
+          {columns.ready.map(order => (
+            <OrderCard key={order._id} order={order}
+              onPrev={() => updateOrderStatus(order._id, 'process')}
+              onNext={() => updateOrderStatus(order._id, 'complete')}
+              onPrint={() => handlePrintBill(order)}
+              isReady
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const filteredMenuItems = menuItems.filter(item =>
+    (item.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    (item.description?.toLowerCase() || '').includes(searchQuery.toLowerCase()) ||
+    (item.category?.toLowerCase() || '').includes(searchQuery.toLowerCase())
+  );
+
+  const renderMenu = () => (
+    <div>
+      <div className="menu-toolbar">
+        <div className="search-bar">
+          <span className="search-icon">🔍</span>
+          <input
+            type="text"
+            placeholder="Search menu..."
+            className="search-input"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <button className="add-btn" onClick={() => handleOpenModal('add')}>
+          <span className="btn-icon">+</span> Add Item
+        </button>
+      </div>
+
+      <div className="menu-grid">
+        {filteredMenuItems.map(item => (
+          <div key={item._id} className="menu-card">
+            <div className={`availability-badge ${item.available ? 'available' : 'unavailable'}`}>
+              {item.available ? 'In Stock' : 'Sold Out'}
+            </div>
+            <div className="menu-img-container">
+              <img src={item.image || 'https://via.placeholder.com/300'} alt={item.name} />
+            </div>
+            <div className="menu-content">
+              <div className="menu-header">
+                <span className="menu-title">{item.name}</span>
+                <span className="menu-price">₹{item.price}</span>
+              </div>
+              <p className="menu-desc">{item.description}</p>
+              <div className="menu-actions">
+                <button className="menu-btn btn-edit" onClick={() => handleOpenModal('edit', item)}>Edit</button>
+                <button className="menu-btn btn-toggle" onClick={() => toggleAvailability(item)}>
+                  {item.available ? 'Sold Out' : 'Restock'}
+                </button>
+                <button className="menu-btn btn-delete" onClick={() => handleDeleteItem(item._id)}>Delete</button>
+              </div>
+            </div>
+          </div>
+        ))}
+        {filteredMenuItems.length === 0 && (
+          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: '#666' }}>
+            <p>No menu items found matching "{searchQuery}"</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderSettings = () => (
+    <div className="settings-container">
+      {/* 1. QR Code Center */}
+      <div className="settings-card qr-section">
+        <div className="card-header-main">
+          <h2>📱 QR Code Center</h2>
+          <p>Scan to view your digital menu</p>
+        </div>
+        <div className="qr-preview-wrapper">
+          <div className="settings-qr-container">
+            <QRCode value={`${window.location.origin}/menu/${localStorage.getItem('userId')}`} size={180} />
+          </div>
+          <div className="qr-actions-grid">
+            <a className="qr-action-tile" href={`/menu/${localStorage.getItem('userId')}`} target="_blank" rel="noreferrer">
+              <span className="tile-icon">🌐</span>
+              <span className="tile-text">Live Menu</span>
+            </a>
+            <button className="qr-action-tile" onClick={downloadQRCode}>
+              <span className="tile-icon">📥</span>
+              <span className="tile-text">Download</span>
+            </button>
+            <button className="qr-action-tile" onClick={() => window.print()}>
+              <span className="tile-icon">🖨️</span>
+              <span className="tile-text">Print All</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Table Management */}
+      <div className="settings-card table-section">
+        <div className="card-header-main">
+          <h2>🪑 Table Management</h2>
+          <p>Configure your restaurant layout</p>
+        </div>
+        <div className="table-manager-content">
+          <div className="table-add-group">
+            <input
+              type="number"
+              placeholder="Table No."
+              value={tableInput}
+              onChange={(e) => setTableInput(e.target.value)}
+              onKeyPress={(e) => e.key === 'Enter' && addTable()}
+            />
+            <button className="add-table-btn" onClick={addTable}>Add</button>
+          </div>
+          <div className="tables-list">
+            {restaurantData?.tables.map(num => (
+              <div key={num} className="table-chip">
+                <span>Table {num}</span>
+                <div className="table-actions-inline">
+                  <a href={`${window.location.origin}/menu/${localStorage.getItem('userId')}?table=${num}`} target="_blank" rel="noreferrer" title="Open table menu">🔗</a>
+                  <button className="remove-table" onClick={() => removeTable(num)}>&times;</button>
+                </div>
+              </div>
+            ))}
+            {(!restaurantData?.tables || restaurantData.tables.length === 0) && (
+              <div className="empty-state">No tables added yet.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 3. System Preferences */}
+      <div className="settings-card pref-section">
+        <div className="card-header-main">
+          <h2>🛠️ System Preferences</h2>
+        </div>
+        <div className="pref-item">
+          <div className="pref-info">
+            <span className="pref-title">🔔 Order Sound Alerts</span>
+            <span className="pref-desc">Play sound when new orders arrive</span>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={soundEnabled}
+              onChange={(e) => {
+                setSoundEnabled(e.target.checked);
+                localStorage.setItem('soundEnabled', e.target.checked);
+              }}
+            />
+            <span className="slider round"></span>
+          </label>
+        </div>
+
+        <div className="restaurant-info-footer">
+          <div className="info-row">
+            <span className="info-label">Restaurant ID:</span>
+            <span className="info-val">{restaurantData?._id}</span>
+          </div>
+          <div className="info-row">
+            <span className="info-label">Restaurant Name:</span>
+            <span className="info-val">{restaurantData?.restaurantName}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div className="dashboard-container">
-      {/* Notification Container */}
+      {/* Notifications */}
       <div className="notification-container">
-        {notifications.map(notification => (
-          <div key={notification.id} className={`notification notification-${notification.type}`}>
-            <div className="notification-content">
-              <span>{notification.message}</span>
-            </div>
-            <button 
-              className="notification-close"
-              onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
-            >
-              ✕
-            </button>
+        {notifications.map(n => (
+          <div key={n.id} className={`notification notification-${n.type}`}>
+            {n.message}
           </div>
         ))}
       </div>
 
-      <div className="qr-section">
-        <h2>📱 Your Unique Restaurant QR Codes</h2>
-        <div style={{ backgroundColor: '#e3f2fd', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-          <p><strong>✓ Each restaurant has a unique QR code</strong></p>
-          <p>Your Restaurant ID (Unique): <code style={{ backgroundColor: '#fff', padding: '5px 10px', borderRadius: '4px', fontWeight: 'bold' }}>{localStorage.getItem('userId')}</code></p>
-          <p>Customers scanning your QR will ONLY see your menu and can place orders.</p>
-        </div>
-        
-        <div className="share-links">
-          <div className="share-link">
-            <h3>Main Menu QR Code</h3>
-            <p style={{ fontSize: '14px', color: '#666' }}>Customers scan this to view your menu and place orders</p>
-            <div className="link-container">
-              <input
-                type="text"
-                readOnly
-                value={`${window.location.origin}/menu/${localStorage.getItem('userId')}`}
-              />
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/menu/${localStorage.getItem('userId')}`);
-                  alert('Link copied to clipboard!');
-                }}
-                className="copy-button"
-              >
-                <i className="fas fa-copy"></i>
-              </button>
-            </div>
-            <div style={{ marginTop: '15px' }}>
-              <h4>Download QR Code</h4>
-              <div id="qr-container" style={{ padding: '10px', backgroundColor: '#fff', display: 'inline-block', borderRadius: '8px' }}>
-                <QRCode value={`${window.location.origin}/menu/${localStorage.getItem('userId')}`} size={200} />
-              </div>
-              <div style={{ marginTop: '10px' }}>
-                <button 
-                  onClick={() => downloadQRCode(document.getElementById('qr-container'), 'restaurant-qr.png')}
-                  className="button"
-                  style={{ backgroundColor: '#4CAF50' }}
-                >
-                  Download QR Code
-                </button>
-              </div>
-            </div>
-          </div>
+      {/* Header */}
+      <div className="dashboard-header">
+        <h1>Restaurant Dashboard</h1>
+        <div className="dashboard-tabs">
+          <button
+            className={`tab-btn ${activeTab === 'orders' ? 'active' : ''}`}
+            onClick={() => setActiveTab('orders')}
+          >
+            📋 Live Orders
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'menu' ? 'active' : ''}`}
+            onClick={() => setActiveTab('menu')}
+          >
+            🍔 Menu Manager
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            ⚙️ Settings
+          </button>
         </div>
       </div>
 
-      <div className="menu-section">
-        <h2>Manage Menu</h2>
-        <form onSubmit={handleAddItem}>
-          <input
-            type="text"
-            placeholder="Item Name"
-            value={newItem.name}
-            onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Description"
-            value={newItem.description}
-            onChange={(e) => setNewItem({ ...newItem, description: e.target.value })}
-          />
-          <input
-            type="number"
-            placeholder="Price"
-            value={newItem.price}
-            onChange={(e) => setNewItem({ ...newItem, price: e.target.value })}
-            required
-          />
-          <input
-            type="text"
-            placeholder="Category"
-            value={newItem.category}
-            onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-          />
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Image URL (or upload below)</label>
-            <input
-              type="text"
-              placeholder="Image URL"
-              value={newItem.image}
-              onChange={(e) => setNewItem({ ...newItem, image: e.target.value })}
-              style={{ width: '100%', padding: '8px', marginBottom: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
-            />
-          </div>
-          <div style={{ marginBottom: '10px' }}>
-            <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Or Upload Image</label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => handleImageUpload(e, false)}
-              style={{ display: 'block', marginBottom: '10px' }}
-            />
-            {newItem.image && newItem.image.startsWith('data:') && (
-              <img src={newItem.image} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px', borderRadius: '4px', marginBottom: '10px' }} />
-            )}
-          </div>
-          <button type="submit" className="button">Add Item</button>
-        </form>
+      {/* Content Area */}
+      <div className="dashboard-content">
+        {activeTab === 'orders' && renderOrders()}
+        {activeTab === 'menu' && renderMenu()}
+        {activeTab === 'settings' && renderSettings()}
+      </div>
 
-        <div className="menu-items">
-          {menuItems.map(item => (
-            <div key={item._id}>
-              {editingItemId === item._id ? (
-                <div className="edit-form" style={{ border: '2px solid #007bff', padding: '15px', borderRadius: '5px', marginBottom: '15px' }}>
-                  <h3>Edit Menu Item</h3>
-                  <input
-                    type="text"
-                    placeholder="Item Name"
-                    value={editFormData.name}
-                    onChange={(e) => setEditFormData({...editFormData, name: e.target.value})}
-                    style={{ width: '100%', marginBottom: '10px', padding: '8px' }}
-                  />
-                  <textarea
-                    placeholder="Description"
-                    value={editFormData.description}
-                    onChange={(e) => setEditFormData({...editFormData, description: e.target.value})}
-                    style={{ width: '100%', marginBottom: '10px', padding: '8px', minHeight: '60px' }}
-                  />
-                  <input
-                    type="number"
-                    placeholder="Price"
-                    value={editFormData.price}
-                    onChange={(e) => setEditFormData({...editFormData, price: e.target.value})}
-                    style={{ width: '100%', marginBottom: '10px', padding: '8px' }}
-                  />
-                  <select
-                    value={editFormData.category}
-                    onChange={(e) => setEditFormData({...editFormData, category: e.target.value})}
-                    style={{ width: '100%', marginBottom: '10px', padding: '8px' }}
-                  >
-                    <option value="">Select Category</option>
-                    <option value="Appetizers">Appetizers</option>
-                    <option value="Main Course">Main Course</option>
-                    <option value="Desserts">Desserts</option>
-                    <option value="Beverages">Beverages</option>
-                  </select>
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Image URL (or upload below)</label>
-                  <input
-                    type="text"
-                    placeholder="Image URL"
-                    value={editFormData.image}
-                    onChange={(e) => setEditFormData({...editFormData, image: e.target.value})}
-                    style={{ width: '100%', marginBottom: '10px', padding: '8px' }}
-                  />
-                  <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Or Upload New Image</label>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => handleImageUpload(e, true)}
-                    style={{ display: 'block', marginBottom: '10px', width: '100%' }}
-                  />
-                  {editFormData.image && editFormData.image.startsWith('data:') && (
-                    <img src={editFormData.image} alt="Preview" style={{ maxWidth: '100px', maxHeight: '100px', borderRadius: '4px', marginBottom: '10px' }} />
+      {/* Modal */}
+      {showModal && (
+        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <h2>{modalMode === 'add' ? '✨ Add New Item' : '✏️ Edit Item'}</h2>
+              <button className="close-modal" onClick={() => setShowModal(false)}>&times;</button>
+            </div>
+            <form onSubmit={handleSaveItem}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                {/* Left Column: textual inputs */}
+                <div>
+                  <div className="input-group">
+                    <input
+                      type="text"
+                      className="interactive-input"
+                      placeholder=" "
+                      value={formData.name}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      required
+                    />
+                    <label>Item Name</label>
+                  </div>
+
+                  <div className="input-group">
+                    <textarea
+                      className="interactive-input"
+                      placeholder=" "
+                      value={formData.description}
+                      onChange={e => setFormData({ ...formData, description: e.target.value })}
+                      style={{ height: '120px', resize: 'none' }}
+                    />
+                    <label>Description</label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                    <div className="input-group">
+                      <input
+                        type="number"
+                        className="interactive-input"
+                        placeholder=" "
+                        value={formData.price}
+                        onChange={e => setFormData({ ...formData, price: e.target.value })}
+                        required
+                      />
+                      <label>Price (₹)</label>
+                    </div>
+                    <div className="input-group">
+                      <select
+                        className="interactive-input"
+                        value={formData.category}
+                        onChange={e => setFormData({ ...formData, category: e.target.value })}
+                        required
+                        style={{ appearance: 'none' }}
+                      >
+                        <option value="" disabled hidden></option>
+                        <option value="Veg">Veg</option>
+                        <option value="Non-Veg">Non-Veg</option>
+                        <option value="Beverages">Beverages</option>
+                        <option value="Desserts">Desserts</option>
+                      </select>
+                      <label>Category</label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Image inputs */}
+                <div>
+                  <div className="input-group">
+                    <input
+                      type="text"
+                      className="interactive-input"
+                      placeholder=" "
+                      value={formData.image}
+                      onChange={e => setFormData({ ...formData, image: e.target.value })}
+                    />
+                    <label>Paste Image URL</label>
+                  </div>
+
+                  <div className="file-input-wrapper">
+                    <label>Or Upload Image</label>
+                    <input type="file" className="file-input" onChange={handleImageUpload} accept="image/*" />
+                  </div>
+
+                  {formData.image && (
+                    <div className="img-preview">
+                      <img src={formData.image} alt="Preview" onError={(e) => e.target.src = 'https://via.placeholder.com/300?text=Invalid+URL'} />
+                    </div>
                   )}
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button onClick={handleSaveEdit} style={{ flex: 1, padding: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Save</button>
-                    <button onClick={() => setEditingItemId(null)} style={{ flex: 1, padding: '10px', backgroundColor: '#6c757d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <div className="menu-item-card">
-                  <img src={item.image || 'placeholder.jpg'} alt={item.name} />
-                  <h3>{item.name}</h3>
-                  <p>{item.description}</p>
-                  <p style={{ fontWeight: 'bold', fontSize: '1.1em' }}>₹{item.price}</p>
-                  <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
-                    <button onClick={() => handleUpdateItem(item._id, {
-                      ...item,
-                      available: !item.available
-                    })} style={{ flex: 1, padding: '8px', backgroundColor: '#17a2b8', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                      {item.available ? 'Mark Unavailable' : 'Mark Available'}
-                    </button>
-                    <button onClick={() => handleEditItem(item)} style={{ padding: '8px 12px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>✏️ Edit</button>
-                    <button onClick={() => handleDeleteItem(item._id)} style={{ padding: '8px 12px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>🗑️ Delete</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Recent Orders Section */}
-      {orders.length > 0 && (
-        <div className="orders-section">
-          <h2>📋 Recent Orders</h2>
-          <div className="orders-container">
-            {orders.map(order => (
-              <div key={order._id} className="order-card">
-                <div className="order-header">
-                  <div className="order-header-info">
-                    <h3>Table {order.tableNumber}</h3>
-                    <p className="customer-name">{order.customerName || 'Guest'}</p>
-                  </div>
-                  <span className="order-time">
-                    {new Date(order.createdAt).toLocaleTimeString()}
-                  </span>
-                </div>
-                
-                <div className="order-items">
-                  <strong>Items:</strong>
-                  <ul>
-                    {order.items.map((item, idx) => (
-                      <li key={idx}>
-                        {item.menuItemName} × {item.quantity}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                
-                <div className="order-footer">
-                  <div className="order-total">
-                    <strong>₹{order.totalAmount}</strong>
-                  </div>
-                  
-                  <div className="order-status">
-                    <span className={`status-badge status-${order.status}`}>{order.status}</span>
-                  </div>
-                  
-                  <div className="order-actions">
-                    {order.status !== 'complete' && (
-                      <button 
-                        className="btn-complete"
-                        onClick={() => handleOrderStatus(order._id, 'complete')}
-                      >
-                        ✓ Complete
-                      </button>
-                    )}
-                    {order.status !== 'cancelled' && (
-                      <button 
-                        className="btn-cancel"
-                        onClick={() => handleOrderStatus(order._id, 'cancelled')}
-                      >
-                        ✕ Cancel
-                      </button>
-                    )}
-                  </div>
                 </div>
               </div>
-            ))}
+
+              <div className="modal-footer">
+                <button type="button" className="btn-secondary" onClick={() => setShowModal(false)}>Cancel</button>
+                <button type="submit" className="btn-primary">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* DEDICATED PRINTABLE BILL TEMPLATE (Hidden by default) */}
+      {printOrder && (
+        <div className="printable-bill-template">
+          <div className="bill-header">
+            <h1>{restaurantData?.restaurantName || 'RESTAURANT'}</h1>
+            <p className="bill-subtitle">Admin Copy - Bill Receipt</p>
+            <div className="bill-divider"></div>
+          </div>
+
+          <div className="bill-info">
+            <p><span>Order ID:</span> <span>#{printOrder._id.slice(-6).toUpperCase()}</span></p>
+            <p><span>Date:</span> <span>{new Date(printOrder.createdAt).toLocaleString()}</span></p>
+            <p><span>Customer:</span> <span>{printOrder.customerName || 'Guest'}</span></p>
+            <p><span>Table No:</span> <span>{printOrder.tableNumber}</span></p>
+          </div>
+
+          <div className="bill-divider"></div>
+
+          <table className="bill-table">
+            <thead>
+              <tr>
+                <th className="text-left">Item</th>
+                <th className="text-center">Qty</th>
+                <th className="text-right">Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printOrder.items.map((item, index) => (
+                <tr key={index}>
+                  <td className="text-left">{item.menuItemName}</td>
+                  <td className="text-center">{item.quantity}</td>
+                  <td className="text-right">₹{(item.price * item.quantity).toFixed(2)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="bill-divider"></div>
+
+          <div className="bill-total-row">
+            <span>Total Amount</span>
+            <span>₹{printOrder.totalAmount?.toFixed(2)}</span>
+          </div>
+
+          <div className="bill-footer">
+            <p>Restaurant Copy</p>
+            <p>Generated by QR Menu Pro</p>
           </div>
         </div>
       )}
     </div>
   );
 };
+
+// Helper Component for Order Card
+const OrderCard = ({ order, onNext, onPrev, onCancel, onPrint, isReady, isCompleted }) => (
+  <div className={`kanban-card ${isReady ? 'ready-card' : ''}`}>
+    <div className="card-header">
+      <div className="header-top">
+        <span className="table-badge">T-{order.tableNumber}</span>
+        <span className="time-badge">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+      </div>
+      <div className="customer-info-compact">
+        <span className="customer-name-small">{order.customerName || 'Guest'}</span>
+      </div>
+    </div>
+    <div className="card-items-compact">
+      {order.items.map((item, i) => (
+        <div key={i} className="card-item-compact">
+          <span className="item-qty-compact">{item.quantity}x</span>
+          <span className="item-name-compact">{item.menuItemName}</span>
+        </div>
+      ))}
+    </div>
+    <div className="card-footer-compact">
+      <div className="total-section-compact">
+        <span className="total-price-compact">₹{order.totalAmount}</span>
+        {order.status === 'billed' && <span className="billed-indicator">Billed</span>}
+      </div>
+      {!isCompleted && (
+        <div className="card-actions-compact">
+          {onCancel && <button className="compact-action-btn btn-cancel" onClick={onCancel} title="Cancel">✕</button>}
+          {onPrev && <button className="compact-action-btn btn-prev" onClick={onPrev} title="Back">←</button>}
+          {onPrint && <button className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-print'}`} onClick={onPrint} title="Print Bill">🖨️</button>}
+          {onNext && (
+            <button className="compact-action-btn btn-next" onClick={onNext} title={isReady ? "Complete" : "Next"}>
+              {isReady ? '✓' : '➜'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  </div>
+);
 
 export default Dashboard;

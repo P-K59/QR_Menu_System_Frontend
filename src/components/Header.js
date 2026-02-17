@@ -39,46 +39,49 @@ const Header = () => {
     <header className={`header ${isScrolled ? 'scrolled' : ''}`}>
       <div className="header-container">
         <Link to="/" className="logo">
-          <i className="fas fa-qrcode"></i>
-          QR Menu
+          <div className="logo-icon">
+            <i className="fas fa-qrcode"></i>
+          </div>
+          <span className="logo-text">QR Menu<span className="text-primary"> Pro</span></span>
         </Link>
-        
-        <button 
-          className={`menu-toggle ${isMobileMenuOpen ? 'active' : ''}`}
-          onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-        >
-          <i className={`fas ${isMobileMenuOpen ? 'fa-times' : 'fa-bars'}`}></i>
-        </button>
 
-        <nav className={`nav-links ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
-          {isLoggedIn ? (
-            <>
-              <Link to="/dashboard" className={`nav-link ${isActive('/dashboard')}`}>
-                <i className="fas fa-tachometer-alt"></i> Dashboard
-              </Link>
-              <Link to="/orders" className={`nav-link ${isActive('/orders')}`}>
-                <i className="fas fa-clipboard-list"></i> Orders
-              </Link>
-              <Link to="/profile" className={`nav-link ${isActive('/profile')}`}>
-                <i className="fas fa-user-circle"></i> Profile
-              </Link>
-              <div className="user-profile">
-                <button onClick={handleLogout} className="button button-secondary">
-                  <i className="fas fa-sign-out-alt"></i> Logout
+        <div className="nav-wrapper">
+          <nav className={`nav-links ${isMobileMenuOpen ? 'mobile-open' : ''}`}>
+            {isLoggedIn ? (
+              <>
+                <Link to="/dashboard" className={`nav-link ${isActive('/dashboard')}`} onClick={() => setIsMobileMenuOpen(false)}>
+                  Dashboard
+                </Link>
+                <Link to="/orders" className={`nav-link ${isActive('/orders')}`} onClick={() => setIsMobileMenuOpen(false)}>
+                  Orders
+                </Link>
+                <Link to="/profile" className={`nav-link ${isActive('/profile')}`} onClick={() => setIsMobileMenuOpen(false)}>
+                  Profile
+                </Link>
+                <button onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }} className="header-btn secondary">
+                  Logout
                 </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Link to="/login" className={`nav-link ${isActive('/login')}`}>
-                <i className="fas fa-sign-in-alt"></i> Login
-              </Link>
-              <Link to="/register" className="button">
-                <i className="fas fa-user-plus"></i> Register
-              </Link>
-            </>
-          )}
-        </nav>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className={`nav-link ${isActive('/login')}`} onClick={() => setIsMobileMenuOpen(false)}>
+                  Login
+                </Link>
+                <Link to="/register" className="header-btn primary" onClick={() => setIsMobileMenuOpen(false)}>
+                  Get Started
+                </Link>
+              </>
+            )}
+          </nav>
+
+          <button
+            className={`menu-toggle ${isMobileMenuOpen ? 'active' : ''}`}
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label="Toggle menu"
+          >
+            <span className="hamburger"></span>
+          </button>
+        </div>
       </div>
     </header>
   );

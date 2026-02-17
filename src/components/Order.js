@@ -11,17 +11,17 @@ const Order = () => {
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
-    
+
     // Connect WebSocket for real-time updates
     const socket = io('${API_BASE_URL}');
     socket.emit('join', userId);
-    
+
     socket.on('newOrder', (order) => {
       setOrders(prev => [order, ...prev]);
     });
 
     socket.on('orderUpdated', (updatedOrder) => {
-      setOrders(prev => 
+      setOrders(prev =>
         prev.map(order => order._id === updatedOrder._id ? updatedOrder : order)
       );
     });
@@ -48,10 +48,11 @@ const Order = () => {
 
   const updateOrderStatus = async (orderId, newStatus) => {
     try {
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
       const response = await axios.put(`${API_BASE_URL}/api/orders/${orderId}`, {
         status: newStatus
-      });
-      setOrders(orders.map(order => 
+      }, { headers });
+      setOrders(orders.map(order =>
         order._id === orderId ? response.data : order
       ));
     } catch (error) {
@@ -60,7 +61,7 @@ const Order = () => {
   };
 
   const getStatusColor = (status) => {
-    switch(status) {
+    switch (status) {
       case 'pending': return '#FF9800';
       case 'process': return '#2196F3';
       case 'complete': return '#4CAF50';
@@ -70,7 +71,7 @@ const Order = () => {
   };
 
   const getStatusIcon = (status) => {
-    switch(status) {
+    switch (status) {
       case 'pending': return 'fas fa-hourglass-half';
       case 'process': return 'fas fa-spinner';
       case 'complete': return 'fas fa-check-circle';
@@ -79,8 +80,8 @@ const Order = () => {
     }
   };
 
-  const filteredOrders = selectedFilter === 'all' 
-    ? orders 
+  const filteredOrders = selectedFilter === 'all'
+    ? orders
     : orders.filter(order => order.status === selectedFilter);
 
   const statusCounts = {
@@ -112,14 +113,14 @@ const Order = () => {
 
       {/* Status Tabs */}
       <div className="status-tabs">
-        <button 
+        <button
           className={`status-tab ${selectedFilter === 'all' ? 'active' : ''}`}
           onClick={() => setSelectedFilter('all')}
         >
           <span className="tab-label">All Orders</span>
           <span className="tab-count">{statusCounts.all}</span>
         </button>
-        <button 
+        <button
           className={`status-tab ${selectedFilter === 'pending' ? 'active' : ''}`}
           onClick={() => setSelectedFilter('pending')}
           style={{ borderLeftColor: '#FF9800' }}
@@ -127,7 +128,7 @@ const Order = () => {
           <span className="tab-label"><i className="fas fa-hourglass-half"></i> Pending</span>
           <span className="tab-count">{statusCounts.pending}</span>
         </button>
-        <button 
+        <button
           className={`status-tab ${selectedFilter === 'process' ? 'active' : ''}`}
           onClick={() => setSelectedFilter('process')}
           style={{ borderLeftColor: '#2196F3' }}
@@ -135,7 +136,7 @@ const Order = () => {
           <span className="tab-label"><i className="fas fa-spinner"></i> Processing</span>
           <span className="tab-count">{statusCounts.process}</span>
         </button>
-        <button 
+        <button
           className={`status-tab ${selectedFilter === 'complete' ? 'active' : ''}`}
           onClick={() => setSelectedFilter('complete')}
           style={{ borderLeftColor: '#4CAF50' }}
@@ -215,7 +216,7 @@ const Order = () => {
               <div className="order-card-footer">
                 <div className="status-buttons">
                   {order.status !== 'pending' && (
-                    <button 
+                    <button
                       className="status-btn pending-btn"
                       onClick={() => updateOrderStatus(order._id, 'pending')}
                       title="Mark as Pending"
@@ -224,7 +225,7 @@ const Order = () => {
                     </button>
                   )}
                   {order.status !== 'process' && (
-                    <button 
+                    <button
                       className="status-btn process-btn"
                       onClick={() => updateOrderStatus(order._id, 'process')}
                       title="Mark as Processing"
@@ -233,7 +234,7 @@ const Order = () => {
                     </button>
                   )}
                   {order.status !== 'complete' && (
-                    <button 
+                    <button
                       className="status-btn complete-btn"
                       onClick={() => updateOrderStatus(order._id, 'complete')}
                       title="Mark as Complete"

@@ -32,56 +32,58 @@ const ForgotPassword = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-header">
-        <h2>Forgot Password</h2>
-        <p>Enter your email to receive a password reset code</p>
-      </div>
+    <div className="auth-page">
+      <div className="auth-mesh-bg"></div>
 
-      {success && (
-        <div className="success-message">
-          <i className="fas fa-check-circle"></i>
-          {success}
-        </div>
-      )}
-
-      {error && (
-        <div className="error-message">
-          <i className="fas fa-exclamation-circle"></i>
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="auth-form">
-        <div className="form-group">
-          <label htmlFor="email">Email Address</label>
-          <i className="fas fa-envelope"></i>
-          <input
-            type="email"
-            id="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Enter your email"
-            disabled={loading}
-            required
-          />
-        </div>
-
-        <button type="submit" className="auth-button" disabled={loading}>
-          {loading ? (
-            <div className="loading-dots">
-              <span></span>
-              <span></span>
-              <span></span>
+      <div className="auth-card">
+        <div className="auth-card-header">
+          <Link to="/" className="auth-logo">
+            <div className="logo-icon-small">
+              <i className="fas fa-qrcode"></i>
             </div>
-          ) : (
-            'Send Reset Code'
-          )}
-        </button>
-      </form>
+            <span>QR Menu Pro</span>
+          </Link>
+          <h2>Forgot Password</h2>
+          <p>We'll send a reset code to your email</p>
+        </div>
 
-      <div className="auth-footer">
-        Remember your password? <Link to="/login">Login here</Link>
+        {success && (
+          <div className="auth-alert success">
+            <i className="fas fa-check-circle"></i>
+            {success}
+          </div>
+        )}
+
+        {error && (
+          <div className="auth-alert error">
+            <i className="fas fa-exclamation-circle"></i>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="auth-form-modern">
+          <div className="auth-input-group">
+            <div className="input-wrapper-modern">
+              <i className="fas fa-envelope input-icon"></i>
+              <input
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <button type="submit" className="auth-submit-btn" disabled={loading}>
+            {loading ? 'Sending Code...' : 'Send Reset Code'}
+          </button>
+        </form>
+
+        <div className="auth-card-footer">
+          <p>Remember your password? <Link to="/login">Login here</Link></p>
+        </div>
       </div>
     </div>
   );

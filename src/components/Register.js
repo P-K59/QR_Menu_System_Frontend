@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import API_BASE_URL from '../config';
 import './Auth.css';
@@ -8,9 +8,9 @@ const Register = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     email: '',
+    phoneNumber: '',
     password: '',
-    restaurantName: '',
-    tables: ''
+    restaurantName: ''
   });
   const [error, setError] = useState('');
 
@@ -19,7 +19,7 @@ const Register = () => {
     setError('');
 
     try {
-      if (!formData.email || !formData.password || !formData.restaurantName || !formData.tables) {
+      if (!formData.email || !formData.password || !formData.restaurantName) {
         setError('All fields are required');
         return;
       }
@@ -35,16 +35,10 @@ const Register = () => {
         return;
       }
 
-      const tablesArray = formData.tables
-        .split(',')
-        .map(num => parseInt(num.trim()))
-        .filter(num => !isNaN(num));
-
       const requestData = {
         email: formData.email.trim(),
         password: formData.password,
-        restaurantName: formData.restaurantName.trim(),
-        tables: tablesArray
+        restaurantName: formData.restaurantName.trim()
       };
 
       const response = await axios.post(`${API_BASE_URL}/api/users/register`, requestData);
@@ -65,49 +59,92 @@ const Register = () => {
   };
 
   return (
-    <div className="auth-container">
-      <h2>Register Restaurant</h2>
-      <form onSubmit={handleSubmit}>
-        {error && <div className="error-message">{error}</div>}
-        <div className="form-group">
-          <label>Email:</label>
-          <input
-            type="email"
-            value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-            required
-          />
+    <div className="auth-page">
+      <div className="auth-mesh-bg"></div>
+
+      <div className="auth-card wide">
+        <div className="auth-card-header">
+          <Link to="/" className="auth-logo">
+            <div className="logo-icon-small">
+              <i className="fas fa-qrcode"></i>
+            </div>
+            <span>QR Menu Pro</span>
+          </Link>
+          <h2>Register Restaurant</h2>
+          <p>Get started with your digital menu today</p>
         </div>
-        <div className="form-group">
-          <label>Password:</label>
-          <input
-            type="password"
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            required
-          />
+
+        {error && (
+          <div className="auth-alert error">
+            <i className="fas fa-exclamation-circle"></i>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="auth-form-modern">
+          <div className="auth-grid">
+            <div className="auth-input-group">
+              <div className="input-wrapper-modern">
+                <i className="fas fa-store input-icon"></i>
+                <input
+                  type="text"
+                  placeholder="Restaurant Name"
+                  value={formData.restaurantName}
+                  onChange={(e) => setFormData({ ...formData, restaurantName: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="auth-input-group">
+              <div className="input-wrapper-modern">
+                <i className="fas fa-envelope input-icon"></i>
+                <input
+                  type="email"
+                  placeholder="Email Address"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="auth-input-group">
+              <div className="input-wrapper-modern">
+                <i className="fas fa-phone input-icon"></i>
+                <input
+                  type="tel"
+                  placeholder="Phone Number"
+                  value={formData.phoneNumber}
+                  onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="auth-input-group">
+              <div className="input-wrapper-modern">
+                <i className="fas fa-lock input-icon"></i>
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                />
+              </div>
+            </div>
+          </div>
+
+          <button type="submit" className="auth-submit-btn">
+            Create Account
+          </button>
+        </form>
+
+        <div className="auth-card-footer">
+          <p>Already have an account? <Link to="/login">Login here</Link></p>
         </div>
-        <div className="form-group">
-          <label>Restaurant Name:</label>
-          <input
-            type="text"
-            value={formData.restaurantName}
-            onChange={(e) => setFormData({ ...formData, restaurantName: e.target.value })}
-            required
-          />
-        </div>
-        <div className="form-group">
-          <label>Table Numbers (comma-separated, e.g., 1, 2, 3):</label>
-          <input
-            type="text"
-            placeholder="1, 2, 3, 4..."
-            value={formData.tables}
-            onChange={(e) => setFormData({ ...formData, tables: e.target.value })}
-            required
-          />
-        </div>
-        <button type="submit" className="button">Register</button>
-      </form>
+      </div>
     </div>
   );
 };

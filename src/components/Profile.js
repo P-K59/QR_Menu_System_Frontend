@@ -33,7 +33,7 @@ const Profile = () => {
         setError('Image size should be less than 1MB. Please compress the image.');
         return;
       }
-      
+
       const reader = new FileReader();
       reader.onloadend = () => {
         // Compress image using canvas
@@ -42,11 +42,11 @@ const Profile = () => {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          
+
           // Reduce size if too large
           const maxWidth = fieldName === 'profilePicture' ? 300 : 1000;
           const maxHeight = fieldName === 'profilePicture' ? 300 : 400;
-          
+
           if (width > height) {
             if (width > maxWidth) {
               height = Math.round(height * maxWidth / width);
@@ -58,12 +58,12 @@ const Profile = () => {
               height = maxHeight;
             }
           }
-          
+
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
-          
+
           // Compress to JPEG with quality 0.7
           const compressedImage = canvas.toDataURL('image/jpeg', 0.7);
           setFormData({ ...formData, [fieldName]: compressedImage });
@@ -81,7 +81,10 @@ const Profile = () => {
   const fetchUserInfo = async () => {
     try {
       const userId = localStorage.getItem('userId');
-      const response = await axios.get(`${API_BASE_URL}/api/users/${userId}`);
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+
+      const response = await axios.get(`${API_BASE_URL}/api/users/${userId}`, { headers });
       setRestaurantInfo(response.data);
       setFormData({
         restaurantName: response.data.restaurantName || '',
@@ -105,13 +108,15 @@ const Profile = () => {
 
     try {
       const userId = localStorage.getItem('userId');
-      
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+
       if (!formData.restaurantName || !formData.restaurantName.trim()) {
         setError('Restaurant name is required');
         setSaving(false);
         return;
       }
-      
+
       const tablesArray = formData.tables
         .split(',')
         .map(num => parseInt(num.trim()))
@@ -124,7 +129,7 @@ const Profile = () => {
         bannerImage: formData.bannerImage || ''
       };
 
-      const response = await axios.put(`${API_BASE_URL}/api/users/${userId}`, updateData);
+      const response = await axios.put(`${API_BASE_URL}/api/users/${userId}`, updateData, { headers });
       setRestaurantInfo(response.data);
       setSuccess('Profile updated successfully!');
       setEditMode(false);
@@ -156,10 +161,14 @@ const Profile = () => {
 
     try {
       const userId = localStorage.getItem('userId');
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+
       await axios.post(`${API_BASE_URL}/api/users/${userId}/change-password`, {
         currentPassword: passwordChange.currentPassword,
         newPassword: passwordChange.newPassword
-      });
+      }, { headers });
+
       setSuccess('Password changed successfully!');
       setPasswordChange({ currentPassword: '', newPassword: '', confirmPassword: '' });
       setTimeout(() => setSuccess(''), 3000);
@@ -188,16 +197,16 @@ const Profile = () => {
       {success && <div className="success-message">{success}</div>}
 
       {/* Restaurant Info Section */}
-      <div style={{ 
-        backgroundColor: '#f9f9f9', 
-        padding: '20px', 
+      <div style={{
+        backgroundColor: '#f9f9f9',
+        padding: '20px',
         borderRadius: '8px',
         marginBottom: '20px'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
           <h3>Restaurant Information</h3>
           {!editMode && (
-            <button 
+            <button
               onClick={() => setEditMode(true)}
               className="button"
               style={{ backgroundColor: '#2196F3', padding: '8px 16px' }}
@@ -273,15 +282,15 @@ const Profile = () => {
             </div>
 
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="button"
                 disabled={saving}
                 style={{ backgroundColor: '#4CAF50' }}
               >
                 {saving ? 'Saving...' : 'Save Changes'}
               </button>
-              <button 
+              <button
                 type="button"
                 className="button"
                 onClick={() => setEditMode(false)}
@@ -313,9 +322,9 @@ const Profile = () => {
       </div>
 
       {/* Change Password Section */}
-      <div style={{ 
-        backgroundColor: '#f9f9f9', 
-        padding: '20px', 
+      <div style={{
+        backgroundColor: '#f9f9f9',
+        padding: '20px',
         borderRadius: '8px',
         marginBottom: '20px'
       }}>
@@ -351,8 +360,8 @@ const Profile = () => {
             />
           </div>
 
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             className="button"
             disabled={saving}
             style={{ backgroundColor: '#FF9800' }}
@@ -364,7 +373,7 @@ const Profile = () => {
 
       {/* Logout Section */}
       <div style={{ textAlign: 'center', marginTop: '30px' }}>
-        <button 
+        <button
           onClick={handleLogout}
           className="button"
           style={{ backgroundColor: '#f44336', padding: '12px 30px' }}

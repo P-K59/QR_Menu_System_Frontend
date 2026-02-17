@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Header from './components/Header';
+import Footer from './components/Footer';
 import LandingPage from './components/LandingPage';
 import Login from './components/Login';
 import Register from './components/Register';
@@ -9,7 +10,6 @@ import ResetPassword from './components/ResetPassword';
 import Dashboard from './components/Dashboard';
 import Menu from './components/Menu';
 import Order from './components/Order';
-import OrderConfirmation from './components/OrderConfirmation';
 import Demo from './components/Demo';
 import Profile from './components/Profile';
 import './App.css';
@@ -46,10 +46,10 @@ function App() {
             </PrivateRoute>
           } />
           <Route path="/menu/:userId" element={<Menu />} />
-          <Route path="/order-confirmation/:orderId" element={<OrderConfirmation />} />
           <Route path="/order/:userId" element={<Order />} />
           <Route path="/demo" element={<Demo />} />
         </Routes>
+        <Footer />
       </div>
     </Router>
   );

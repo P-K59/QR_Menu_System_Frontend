@@ -11,7 +11,7 @@ const Login = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const location = useLocation();
   const [formData, setFormData] = useState({
-    email: '',
+    identifier: '',
     password: ''
   });
 
@@ -37,7 +37,7 @@ const Login = () => {
 
     try {
       const response = await axios.post(`${API_BASE_URL}/api/users/login`, {
-        email: formData.email,
+        identifier: formData.identifier,
         password: formData.password
       });
       localStorage.setItem('token', response.data.token);
@@ -51,76 +51,76 @@ const Login = () => {
   };
 
   return (
-    <div className="auth-container">
-      <div className="auth-header">
-        <h2>Welcome Back</h2>
-        <p>Login to manage your restaurant menu</p>
-      </div>
+    <div className="auth-page">
+      <div className="auth-mesh-bg"></div>
 
-      {successMessage && (
-        <div className="success-message">
-          <i className="fas fa-check-circle"></i>
-          {successMessage}
-        </div>
-      )}
-
-      {error && (
-        <div className="error-message">
-          <i className="fas fa-exclamation-circle"></i>
-          {error}
-        </div>
-      )}
-
-      <form onSubmit={handleLogin} className="auth-form">
-        <div className="form-group">
-          <label htmlFor="email">Email Address</label>
-          <i className="fas fa-envelope"></i>
-          <input
-            type="email"
-            id="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            placeholder="Enter your email"
-            disabled={loading}
-            required
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="password">Password</label>
-          <i className="fas fa-lock"></i>
-          <input
-            type="password"
-            id="password"
-            name="password"
-            value={formData.password}
-            onChange={handleChange}
-            placeholder="Enter your password"
-            disabled={loading}
-            required
-          />
-        </div>
-
-        <button type="submit" className="auth-button" disabled={loading}>
-          {loading ? (
-            <div className="loading-dots">
-              <span></span>
-              <span></span>
-              <span></span>
+      <div className="auth-card">
+        <div className="auth-card-header">
+          <Link to="/" className="auth-logo">
+            <div className="logo-icon-small">
+              <i className="fas fa-qrcode"></i>
             </div>
-          ) : (
-            'Login'
-          )}
-        </button>
-      </form>
-
-      <div className="auth-footer">
-        <div>
-          <Link to="/forgot-password" className="forgot-link">Forgot Password?</Link>
+            <span>QR Menu Pro</span>
+          </Link>
+          <h2>Welcome Back</h2>
+          <p>Login to your restaurant dashboard</p>
         </div>
-        <div>
-          Don't have an account? <Link to="/register">Register here</Link>
+
+        {successMessage && (
+          <div className="auth-alert success">
+            <i className="fas fa-check-circle"></i>
+            {successMessage}
+          </div>
+        )}
+
+        {error && (
+          <div className="auth-alert error">
+            <i className="fas fa-exclamation-circle"></i>
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="auth-form-modern">
+          <div className="auth-input-group">
+            <div className="input-wrapper-modern">
+              <i className="fas fa-user input-icon"></i>
+              <input
+                type="text"
+                name="identifier"
+                placeholder="Email or Phone Number"
+                value={formData.identifier}
+                onChange={handleChange}
+                required
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <div className="auth-input-group">
+            <div className="input-wrapper-modern">
+              <i className="fas fa-lock input-icon"></i>
+              <input
+                type="password"
+                name="password"
+                placeholder="Password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                disabled={loading}
+              />
+            </div>
+            <div className="auth-extra">
+              <Link to="/forgot-password">Forgot password?</Link>
+            </div>
+          </div>
+
+          <button type="submit" className="auth-submit-btn" disabled={loading}>
+            {loading ? 'Authenticating...' : 'Login to Dashboard'}
+          </button>
+        </form>
+
+        <div className="auth-card-footer">
+          <p>Don't have an account? <Link to="/register">Create one now</Link></p>
         </div>
       </div>
     </div>
