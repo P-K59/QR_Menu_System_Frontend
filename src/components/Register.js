@@ -37,6 +37,7 @@ const Register = () => {
 
       const requestData = {
         email: formData.email.trim(),
+        phoneNumber: formData.phoneNumber.trim(),
         password: formData.password,
         restaurantName: formData.restaurantName.trim()
       };

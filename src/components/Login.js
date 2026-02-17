@@ -37,7 +37,7 @@ const Login = () => {
 
     try {
       const response = await axios.post(`${API_BASE_URL}/api/users/login`, {
-        identifier: formData.identifier,
+        identifier: formData.identifier.trim(),
         password: formData.password
       });
       localStorage.setItem('token', response.data.token);
