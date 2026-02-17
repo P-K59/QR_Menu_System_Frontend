@@ -9,6 +9,7 @@ import ResetPassword from './components/ResetPassword';
 import Dashboard from './components/Dashboard';
 import Menu from './components/Menu';
 import Order from './components/Order';
+import OrderConfirmation from './components/OrderConfirmation';
 import Demo from './components/Demo';
 import Profile from './components/Profile';
 import './App.css';
@@ -45,6 +46,7 @@ function App() {
             </PrivateRoute>
           } />
           <Route path="/menu/:userId" element={<Menu />} />
+          <Route path="/order-confirmation/:orderId" element={<OrderConfirmation />} />
           <Route path="/order/:userId" element={<Order />} />
           <Route path="/demo" element={<Demo />} />
         </Routes>

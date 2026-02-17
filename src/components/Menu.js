@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import API_BASE_URL from '../config';
 import './Menu.css';
@@ -8,11 +8,13 @@ import './Menu.css';
 const Menu = () => {
   const { userId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [restaurantInfo, setRestaurantInfo] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [tableNumber, setTableNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -41,6 +43,7 @@ const Menu = () => {
   const fetchMenu = async () => {
     try {
       setLoading(true);
+      setError(null);
       const [menuResponse, restaurantResponse] = await Promise.all([
         axios.get(`${API_BASE_URL}/api/menu/${userId}`),
         axios.get(`${API_BASE_URL}/api/users/${userId}`)
@@ -55,6 +58,8 @@ const Menu = () => {
       setLoading(false);
     } catch (error) {
       console.error('Error fetching menu:', error);
+      setError(error.response?.data?.message || 'Failed to load menu. Please check the restaurant ID or try again later.');
+      setLoading(false);
     }
   };
 
@@ -101,14 +106,12 @@ const Menu = () => {
         totalAmount: cart.reduce((total, item) => total + item.price, 0)
       };
 
-      await axios.post(`${API_BASE_URL}/api/orders`, order);
-      alert('Order placed successfully! The restaurant staff will bring your order to table ' + tableNumber);
-      setCart([]);
-      setCustomerName('');
-      setShowCustomerForm(false);
+      const response = await axios.post(`${API_BASE_URL}/api/orders`, order);
+      // Navigate to order confirmation page with the new order ID
+      navigate(`/order-confirmation/${response.data._id}`);
     } catch (error) {
       console.error('Error placing order:', error);
-      alert('Error placing order');
+      alert('Error placing order: ' + (error.response?.data?.message || error.message));
     }
   };
 
@@ -118,6 +121,18 @@ const Menu = () => {
         <div className="loading">
           <i className="fas fa-spinner fa-spin"></i>
           <p>Loading menu...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="menu-container">
+        <div className="error">
+          <i className="fas fa-exclamation-circle"></i>
+          <p>{error}</p>
+          <p style={{ fontSize: '14px', marginTop: '10px', color: '#666' }}>Restaurant ID: {userId}</p>
         </div>
       </div>
     );
