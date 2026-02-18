@@ -8,12 +8,13 @@ const Order = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     const userId = localStorage.getItem('userId');
 
     // Connect WebSocket for real-time updates
-    const socket = io('${API_BASE_URL}');
+    const socket = io(`${API_BASE_URL}`);
     socket.emit('join', userId);
 
     socket.on('newOrder', (order) => {
@@ -80,15 +81,31 @@ const Order = () => {
     }
   };
 
+  // Date-wise filtering logic
+  const dateFilteredOrders = orders.filter(order => {
+    if (!dateFilter) return true;
+    const orderDate = new Date(order.createdAt).toISOString().split('T')[0];
+    return orderDate === dateFilter;
+  });
+
   const filteredOrders = selectedFilter === 'all'
-    ? orders
-    : orders.filter(order => order.status === selectedFilter);
+    ? dateFilteredOrders
+    : dateFilteredOrders.filter(order => order.status === selectedFilter);
+
+  // Statistics Calculations
+  const stats = {
+    totalOrders: dateFilteredOrders.length,
+    revenue: dateFilteredOrders
+      .filter(o => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+    pendingItems: dateFilteredOrders.filter(o => o.status === 'pending').length
+  };
 
   const statusCounts = {
-    all: orders.length,
-    pending: orders.filter(o => o.status === 'pending').length,
-    process: orders.filter(o => o.status === 'process').length,
-    complete: orders.filter(o => o.status === 'complete').length
+    all: dateFilteredOrders.length,
+    pending: dateFilteredOrders.filter(o => o.status === 'pending').length,
+    process: dateFilteredOrders.filter(o => o.status === 'process').length,
+    complete: dateFilteredOrders.filter(o => o.status === 'complete').length
   };
 
   if (loading) {
@@ -106,9 +123,45 @@ const Order = () => {
     <div className="orders-page-container">
       <div className="orders-header">
         <h1><i className="fas fa-clipboard-list"></i> Order Management</h1>
-        <button onClick={fetchOrders} className="refresh-btn">
-          <i className="fas fa-sync-alt"></i> Refresh
-        </button>
+        <div className="header-actions">
+          <div className="date-filter-container">
+            <label><i className="fas fa-calendar-alt"></i> Filter Date:</label>
+            <input
+              type="date"
+              className="date-input"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+            />
+          </div>
+          <button onClick={fetchOrders} className="refresh-btn">
+            <i className="fas fa-sync-alt"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Statistics Row */}
+      <div className="stats-row">
+        <div className="stat-card total">
+          <div className="stat-icon"><i className="fas fa-shopping-bag"></i></div>
+          <div className="stat-info">
+            <span className="stat-label">Total Orders</span>
+            <span className="stat-value">{stats.totalOrders}</span>
+          </div>
+        </div>
+        <div className="stat-card revenue">
+          <div className="stat-icon"><i className="fas fa-rupee-sign"></i></div>
+          <div className="stat-info">
+            <span className="stat-label">Revenue ({dateFilter === new Date().toISOString().split('T')[0] ? "Today" : dateFilter})</span>
+            <span className="stat-value">₹{stats.revenue.toFixed(2)}</span>
+          </div>
+        </div>
+        <div className="stat-card pending">
+          <div className="stat-icon"><i className="fas fa-clock"></i></div>
+          <div className="stat-info">
+            <span className="stat-label">Pending Orders</span>
+            <span className="stat-value">{stats.pendingItems}</span>
+          </div>
+        </div>
       </div>
 
       {/* Status Tabs */}
@@ -151,7 +204,7 @@ const Order = () => {
         {filteredOrders.length === 0 ? (
           <div className="no-orders">
             <i className="fas fa-inbox"></i>
-            <p>No {selectedFilter !== 'all' ? selectedFilter : ''} orders</p>
+            <p>No {selectedFilter !== 'all' ? selectedFilter : ''} orders found for this date</p>
           </div>
         ) : (
           filteredOrders.map(order => (

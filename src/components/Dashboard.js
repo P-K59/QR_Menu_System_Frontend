@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import API_BASE_URL from '../config';
 import './Dashboard.css';
 
@@ -172,14 +174,56 @@ const Dashboard = () => {
     }
   };
 
-  const handlePrintBill = (order) => {
+  const handleGenerateBill = (order) => {
+    if (order.status !== 'billed' && order.status !== 'complete') {
+      updateOrderStatus(order._id, 'billed');
+      addNotification(`Bill generated for Table ${order.tableNumber}`, 'success');
+    }
+  };
+
+  const handleDownloadBill = async (order) => {
     setPrintOrder(order);
 
-    // Give state time to render the printable-bill-template before printing
-    setTimeout(() => {
-      window.print();
-      setPrintOrder(null);
-    }, 200);
+    // Give state time to render the printable-bill-template
+    setTimeout(async () => {
+      const element = document.querySelector('.printable-bill-template');
+      if (!element) return;
+
+      // Temporarily show the template for capturing
+      element.style.display = 'block';
+      element.style.position = 'fixed';
+      element.style.left = '-9999px';
+
+      try {
+        const canvas = await html2canvas(element, {
+          scale: 3,
+          useCORS: true,
+          backgroundColor: '#ffffff',
+          logging: false,
+          width: 380,
+          windowHeight: element.scrollHeight
+        });
+        const imgData = canvas.toDataURL('image/png');
+
+        const imgProps = { width: canvas.width, height: canvas.height };
+        const pdfWidth = 80;
+        const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+        const pdf = new jsPDF('p', 'mm', [pdfWidth, pdfHeight]);
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.save(`Bill-T${order.tableNumber}-${order._id.slice(-6).toUpperCase()}.pdf`);
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        alert('Could not generate receipt.');
+      } finally {
+        if (element) {
+          element.style.display = 'none';
+          element.style.position = 'absolute';
+          element.style.left = '0';
+        }
+        setPrintOrder(null);
+      }
+    }, 500);
 
     // Trigger billed status update
     if (order.status !== 'billed' && order.status !== 'complete') {
@@ -257,13 +301,6 @@ const Dashboard = () => {
     // Only show orders that are NOT complete or cancelled in the live board
     const liveOrders = orders.filter(o => o.status !== 'complete' && o.status !== 'cancelled');
 
-    // Stats Calculation
-    const totalOrders = orders.filter(o => o.status !== 'cancelled').length;
-    const activeOrders = liveOrders.length;
-    const totalRevenue = orders
-      .filter(o => o.status !== 'cancelled')
-      .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-
     const columns = {
       pending: liveOrders.filter(o => o.status === 'pending'),
       process: liveOrders.filter(o => o.status === 'process'),
@@ -271,68 +308,43 @@ const Dashboard = () => {
     };
 
     return (
-      <div className="orders-tab-container">
-        {/* Statistics Bar */}
-        <div className="stats-overview-bar">
-          <div className="stats-card-premium">
-            <div className="stats-icon">📊</div>
-            <div className="stats-data">
-              <span className="stats-label">Today's Orders</span>
-              <span className="stats-value">{totalOrders}</span>
-            </div>
-          </div>
-          <div className="stats-card-premium">
-            <div className="stats-icon">🔥</div>
-            <div className="stats-data">
-              <span className="stats-label">Active Now</span>
-              <span className="stats-value">{activeOrders}</span>
-            </div>
-          </div>
-          <div className="stats-card-premium">
-            <div className="stats-icon">💰</div>
-            <div className="stats-data">
-              <span className="stats-label">Total Revenue</span>
-              <span className="stats-value">₹{totalRevenue.toFixed(2)}</span>
-            </div>
-          </div>
+      <div className="kanban-board">
+        {/* Pending Column */}
+        <div className="kanban-column status-pending">
+          <h3>🕒 Pending <span className="count">{columns.pending.length}</span></h3>
+          {columns.pending.map(order => (
+            <OrderCard key={order._id} order={order}
+              onNext={() => updateOrderStatus(order._id, 'process')}
+              onCancel={() => updateOrderStatus(order._id, 'cancelled')}
+            />
+          ))}
         </div>
 
-        <div className="kanban-board">
-          {/* Pending Column */}
-          <div className="kanban-column status-pending">
-            <h3>🕒 Pending <span className="count">{columns.pending.length}</span></h3>
-            {columns.pending.map(order => (
-              <OrderCard key={order._id} order={order}
-                onNext={() => updateOrderStatus(order._id, 'process')}
-                onCancel={() => updateOrderStatus(order._id, 'cancelled')}
-              />
-            ))}
-          </div>
+        {/* Processing Column */}
+        <div className="kanban-column status-process">
+          <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
+          {columns.process.map(order => (
+            <OrderCard key={order._id} order={order}
+              onPrev={() => updateOrderStatus(order._id, 'pending')}
+              onNext={() => updateOrderStatus(order._id, 'ready')}
+              onGenerateBill={() => handleGenerateBill(order)}
+              onDownload={() => handleDownloadBill(order)}
+            />
+          ))}
+        </div>
 
-          {/* Processing Column */}
-          <div className="kanban-column status-process">
-            <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
-            {columns.process.map(order => (
-              <OrderCard key={order._id} order={order}
-                onPrev={() => updateOrderStatus(order._id, 'pending')}
-                onNext={() => updateOrderStatus(order._id, 'ready')}
-                onPrint={() => handlePrintBill(order)}
-              />
-            ))}
-          </div>
-
-          {/* Completed/Ready Column */}
-          <div className="kanban-column status-complete">
-            <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
-            {columns.ready.map(order => (
-              <OrderCard key={order._id} order={order}
-                onPrev={() => updateOrderStatus(order._id, 'process')}
-                onNext={() => updateOrderStatus(order._id, 'complete')}
-                onPrint={() => handlePrintBill(order)}
-                isReady
-              />
-            ))}
-          </div>
+        {/* Completed/Ready Column */}
+        <div className="kanban-column status-complete">
+          <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
+          {columns.ready.map(order => (
+            <OrderCard key={order._id} order={order}
+              onPrev={() => updateOrderStatus(order._id, 'process')}
+              onNext={() => updateOrderStatus(order._id, 'complete')}
+              onGenerateBill={() => handleGenerateBill(order)}
+              onDownload={() => handleDownloadBill(order)}
+              isReady
+            />
+          ))}
         </div>
       </div>
     );
@@ -646,7 +658,7 @@ const Dashboard = () => {
         <div className="printable-bill-template">
           <div className="bill-header">
             <h1>{restaurantData?.restaurantName || 'RESTAURANT'}</h1>
-            <p className="bill-subtitle">Admin Copy - Bill Receipt</p>
+            <p className="bill-subtitle">Restaurant-Bill Receipt</p>
             <div className="bill-divider"></div>
           </div>
 
@@ -696,7 +708,7 @@ const Dashboard = () => {
 };
 
 // Helper Component for Order Card
-const OrderCard = ({ order, onNext, onPrev, onCancel, onPrint, isReady, isCompleted }) => (
+const OrderCard = ({ order, onNext, onPrev, onCancel, onGenerateBill, onDownload, isReady, isCompleted }) => (
   <div className={`kanban-card ${isReady ? 'ready-card' : ''}`}>
     <div className="card-header">
       <div className="header-top">
@@ -724,7 +736,27 @@ const OrderCard = ({ order, onNext, onPrev, onCancel, onPrint, isReady, isComple
         <div className="card-actions-compact">
           {onCancel && <button className="compact-action-btn btn-cancel" onClick={onCancel} title="Cancel">✕</button>}
           {onPrev && <button className="compact-action-btn btn-prev" onClick={onPrev} title="Back">←</button>}
-          {onPrint && <button className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-print'}`} onClick={onPrint} title="Print Bill">🖨️</button>}
+
+          {onGenerateBill && (
+            <button
+              className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-gen-bill'}`}
+              onClick={onGenerateBill}
+              title="Generate Bill"
+              style={{ fontSize: '10px', fontWeight: 'bold' }}
+            >
+              BILL
+            </button>
+          )}
+
+          {onDownload && (
+            <button
+              className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-print'}`}
+              onClick={onDownload}
+              title="Download Receipt"
+            >
+              📥
+            </button>
+          )}
           {onNext && (
             <button className="compact-action-btn btn-next" onClick={onNext} title={isReady ? "Complete" : "Next"}>
               {isReady ? '✓' : '➜'}

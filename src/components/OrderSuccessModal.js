@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 import API_BASE_URL from '../config';
 import './OrderSuccessModal.css';
 
@@ -61,6 +63,46 @@ const OrderSuccessModal = ({ order, onClose, restaurantInfo }) => {
   const isCancelled = currentOrder.status === 'cancelled';
   const isComplete = currentOrder.status === 'complete';
   const isBilled = currentOrder.status === 'billed';
+
+  const downloadReceipt = async () => {
+    const element = document.querySelector('.printable-bill-template');
+    if (!element) return;
+
+    // Temporarily show the template for capturing
+    element.style.display = 'block';
+    element.style.position = 'fixed';
+    element.style.left = '-9999px';
+
+    try {
+      const canvas = await html2canvas(element, {
+        scale: 3,
+        useCORS: true,
+        backgroundColor: '#ffffff',
+        logging: false,
+        width: 380,
+        windowHeight: element.scrollHeight // Ensure full height is captured
+      });
+      const imgData = canvas.toDataURL('image/png');
+
+      // Calculate dynamic PDF size
+      const imgProps = { width: canvas.width, height: canvas.height };
+      const pdfWidth = 80; // Standard receipt width in mm
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      const pdf = new jsPDF('p', 'mm', [pdfWidth, pdfHeight]);
+
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Receipt-${currentOrder._id.slice(-6).toUpperCase()}.pdf`);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Could not generate receipt. Please try printing instead.');
+    } finally {
+      // Restore original display
+      element.style.display = 'none';
+      element.style.position = 'absolute';
+      element.style.left = '0';
+    }
+  };
 
   return (
     <div className="modal-overlay">
@@ -161,8 +203,8 @@ const OrderSuccessModal = ({ order, onClose, restaurantInfo }) => {
 
         <div className="modal-actions">
           {isBilled && (
-            <button onClick={() => window.print()} className="action-btn secondary">
-              <i className="fas fa-print"></i> Print Receipt
+            <button onClick={downloadReceipt} className="action-btn secondary">
+              <i className="fas fa-download"></i> Download Receipt
             </button>
           )}
           <button onClick={onClose} className="action-btn primary">Order More</button>

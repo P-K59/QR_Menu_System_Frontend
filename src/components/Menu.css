@@ -489,3 +489,98 @@ body {
   background: white;
   font-weight: 700;
 }
+
+/* --- OPTIMIZATIONS & SKELETONS --- */
+
+.fade-in {
+  animation: fadeIn 0.6s ease-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.shimmer {
+  background: #f6f7f8;
+  background-image: linear-gradient(90deg,
+      #f6f7f8 0%,
+      #edeef1 20%,
+      #f6f7f8 40%,
+      #f6f7f8 100%);
+  background-repeat: no-repeat;
+  background-size: 800px 104px;
+  display: inline-block;
+  position: relative;
+  animation: shimmer 1.5s infinite linear;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -468px 0;
+  }
+
+  100% {
+    background-position: 468px 0;
+  }
+}
+
+.skeleton-banner {
+  height: 250px;
+  width: 100%;
+}
+
+.skeleton-brand-bar {
+  padding: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: -80px;
+  position: relative;
+  z-index: 2;
+}
+
+.skeleton-logo {
+  width: 70px;
+  height: 70px;
+  border-radius: 20px;
+}
+
+.skeleton-title {
+  height: 24px;
+  width: 150px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.skeleton-meta {
+  height: 16px;
+  width: 100px;
+  border-radius: 4px;
+}
+
+.skeleton-categories {
+  display: flex;
+  gap: 10px;
+  padding: 1rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.skeleton-cat {
+  height: 36px;
+  width: 80px;
+  border-radius: 20px;
+}
+
+.skeleton-card {
+  height: 130px;
+  border-radius: 20px;
+  margin: 0 1.5rem 1rem;
+}

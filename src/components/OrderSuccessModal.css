@@ -345,75 +345,86 @@
   }
 }
 
-/* Printable Bill Styles (Screen) */
+/* Printable Bill Styles (Screen & Capture) */
 .printable-bill-template {
   display: none;
-  /* Hidden on screen */
+  width: 380px;
+  padding: 40px;
+  padding-bottom: 80px;
+  background-color: #ffffff;
+  color: #000000;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.4;
 }
 
-/* Printable Bill Elements */
 .bill-header {
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .bill-header h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 26px;
   text-transform: uppercase;
+  font-weight: bold;
 }
 
 .bill-subtitle {
   margin: 5px 0 0;
   font-size: 14px;
-  color: #666;
+  color: #333;
 }
 
 .bill-divider {
-  border-top: 1px dashed #000;
+  border-top: 2px dashed #000;
   margin: 15px 0;
   width: 100%;
 }
 
 .bill-info {
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .bill-info p {
   display: flex;
   justify-content: space-between;
-  margin: 5px 0;
+  margin: 8px 0;
   font-size: 14px;
+  font-weight: 500;
 }
 
 .bill-table {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 20px;
+  margin-bottom: 25px;
 }
 
 .bill-table th {
-  padding: 8px 0;
-  font-size: 14px;
-  border-bottom: 1px solid #000;
+  padding: 10px 0;
+  font-size: 15px;
+  border-bottom: 2px solid #000;
+  text-transform: uppercase;
 }
 
 .bill-table td {
-  padding: 8px 0;
+  padding: 10px 0;
   font-size: 14px;
+  border-bottom: 1px dashed #ccc;
 }
 
 .bill-total-row {
   display: flex;
   justify-content: space-between;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: bold;
-  margin: 10px 0;
+  margin: 15px 0;
+  padding-top: 10px;
+  border-top: 2px solid #000;
 }
 
 .bill-footer {
   text-align: center;
-  margin-top: 30px;
+  margin-top: 40px;
   font-size: 14px;
   font-style: italic;
 }

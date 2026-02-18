@@ -25,12 +25,6 @@ const Menu = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showCartSheet, setShowCartSheet] = useState(false);
 
-  // Ensure this is a customer-only view - logout if logged in
-  useEffect(() => {
-    // This is the public customer menu page, not for logged in admins
-    // Customers should access via QR code or direct link without authentication
-  }, []);
-
   // Setup WebSocket listener for menu updates
   useEffect(() => {
     const socket = io(`${API_BASE_URL}`);
@@ -57,9 +51,9 @@ const Menu = () => {
       setMenuItems(menuResponse.data);
       setRestaurantInfo(restaurantResponse.data);
 
-      // Extract unique categories
       const uniqueCategories = [...new Set(menuResponse.data.map(item => item.category))].filter(Boolean);
       setCategories(uniqueCategories);
+
       setLoading(false);
     } catch (error) {
       console.error('Error fetching menu:', error);
@@ -70,7 +64,6 @@ const Menu = () => {
 
   useEffect(() => {
     fetchMenu();
-    // Check for table number in URL
     const params = new URLSearchParams(location.search);
     const table = params.get('table');
     if (table) {
@@ -94,7 +87,6 @@ const Menu = () => {
         return;
       }
 
-      // Count items by id
       const itemsMap = {};
       cart.forEach((item) => {
         const key = item._id || item.id;
@@ -118,9 +110,9 @@ const Menu = () => {
 
       const response = await axios.post(`${API_BASE_URL}/api/orders`, order);
 
-      // Clear cart and show success modal
       setCart([]);
       setShowCustomerForm(false);
+      setShowCartSheet(false);
       setTableNumber('');
       setCustomerName('');
       setActiveOrder(response.data);
@@ -131,16 +123,26 @@ const Menu = () => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="menu-container">
-        <div className="loading">
-          <i className="fas fa-spinner fa-spin"></i>
-          <p>Loading menu...</p>
+  const renderSkeletons = () => (
+    <div className="menu-page">
+      <div className="skeleton-banner shimmer"></div>
+      <div className="skeleton-brand-bar">
+        <div className="skeleton-logo shimmer"></div>
+        <div className="brand-info">
+          <div className="skeleton-title shimmer"></div>
+          <div className="skeleton-meta shimmer"></div>
         </div>
       </div>
-    );
-  }
+      <div className="skeleton-categories">
+        {[1, 2, 3, 4].map(i => <div key={i} className="skeleton-cat shimmer"></div>)}
+      </div>
+      <div className="menu-grid-premium">
+        {[1, 2, 3, 4, 5].map(i => <div key={i} className="skeleton-card shimmer"></div>)}
+      </div>
+    </div>
+  );
+
+  if (loading) return renderSkeletons();
 
   if (error) {
     return (
@@ -175,8 +177,7 @@ const Menu = () => {
   const cartTotal = cart.reduce((total, item) => total + item.price, 0);
 
   return (
-    <div className="menu-page">
-      {/* 1. Immersive Header */}
+    <div className="menu-page fade-in">
       <div className="immersive-header">
         <div className="header-banner" style={{ backgroundImage: `url(${restaurantInfo?.bannerImage || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=100&w=1500'})` }}>
           <div className="header-overlay"></div>
@@ -184,7 +185,7 @@ const Menu = () => {
         <div className="brand-bar">
           <div className="brand-logo-wrapper">
             {restaurantInfo?.profilePicture ? (
-              <img src={restaurantInfo.profilePicture} alt="logo" className="brand-logo" />
+              <img src={restaurantInfo.profilePicture} alt="logo" className="brand-logo" loading="lazy" />
             ) : (
               <div className="brand-logo-placeholder">{restaurantInfo.restaurantName.charAt(0)}</div>
             )}
@@ -200,7 +201,6 @@ const Menu = () => {
         </div>
       </div>
 
-      {/* 2. Search & Category Navigation */}
       <div className="sticky-nav-wrapper">
         <div className="search-bar-wrapper">
           <i className="fas fa-search"></i>
@@ -230,12 +230,15 @@ const Menu = () => {
         </div>
       </div>
 
-      {/* 3. Menu Grid */}
       <div className="menu-grid-premium">
         {filteredItems.map((item) => (
           <div key={item._id} className={`premium-item-card ${!item.available ? 'sold-out' : ''}`}>
             <div className="item-img-box">
-              <img src={item.image || 'https://via.placeholder.com/300x200?text=Delicious+Food'} alt={item.name} />
+              <img
+                src={item.image || 'https://via.placeholder.com/300x200?text=Delicious+Food'}
+                alt={item.name}
+                loading="lazy"
+              />
               {!item.available && <div className="sold-out-overlay">Sold Out</div>}
             </div>
             <div className="item-details">
@@ -269,7 +272,6 @@ const Menu = () => {
         )}
       </div>
 
-      {/* 4. Floating Cart Bar */}
       {cart.length > 0 && (
         <div className="floating-cart-bar" onClick={() => setShowCartSheet(true)}>
           <div className="cart-bar-info">
@@ -282,7 +284,6 @@ const Menu = () => {
         </div>
       )}
 
-      {/* 5. Cart Sheet (Modal Layer) */}
       {showCartSheet && (
         <div className="cart-sheet-overlay" onClick={() => setShowCartSheet(false)}>
           <div className="cart-sheet-content" onClick={e => e.stopPropagation()}>
