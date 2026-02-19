@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import LandingPage from './components/LandingPage';
@@ -19,38 +19,49 @@ const PrivateRoute = ({ children }) => {
   return token ? children : <Navigate to="/login" />;
 };
 
-function App() {
+function AppContent() {
+  const location = useLocation();
+  const isCustomerMenu = location.pathname.startsWith('/menu/') || location.pathname.startsWith('/order/');
+
   return (
-    <Router>
-      <div className="App">
-        <Header />
+    <div className="App">
+      {!isCustomerMenu && <Header />}
+      <div className="main-content">
         <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/" element={<div className="page-wrapper"><LandingPage /></div>} />
+          <Route path="/login" element={<div className="page-wrapper"><Login /></div>} />
+          <Route path="/register" element={<div className="page-wrapper"><Register /></div>} />
+          <Route path="/forgot-password" element={<div className="page-wrapper"><ForgotPassword /></div>} />
+          <Route path="/reset-password" element={<div className="page-wrapper"><ResetPassword /></div>} />
           <Route path="/dashboard" element={
             <PrivateRoute>
-              <Dashboard />
+              <div className="page-wrapper"><Dashboard /></div>
             </PrivateRoute>
           } />
           <Route path="/profile" element={
             <PrivateRoute>
-              <Profile />
+              <div className="page-wrapper"><Profile /></div>
             </PrivateRoute>
           } />
           <Route path="/orders" element={
             <PrivateRoute>
-              <Order />
+              <div className="page-wrapper"><Order /></div>
             </PrivateRoute>
           } />
           <Route path="/menu/:userId" element={<Menu />} />
           <Route path="/order/:userId" element={<Order />} />
-          <Route path="/demo" element={<Demo />} />
+          <Route path="/demo" element={<div className="page-wrapper"><Demo /></div>} />
         </Routes>
-        <Footer />
       </div>
+      <Footer />
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 }

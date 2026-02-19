@@ -12,6 +12,9 @@
 .App {
   min-height: 100vh;
   background-color: var(--background-color);
+}
+
+.page-wrapper {
   padding-top: 80px;
 }
 

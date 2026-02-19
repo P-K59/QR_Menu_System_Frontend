@@ -1,4 +1,6 @@
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://qr-backend-59mq.onrender.com';
+const API_BASE_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:5000'
+    : 'https://qr-backend-59mq.onrender.com';
 
 export default API_BASE_URL;

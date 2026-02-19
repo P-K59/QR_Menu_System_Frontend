@@ -4,13 +4,16 @@ import { io } from 'socket.io-client';
 import QRCode from 'react-qr-code';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import JSZip from 'jszip';
 import API_BASE_URL from '../config';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const [activeTab, setActiveTab] = useState('orders'); // orders, menu, settings
+  const [activeTab, setActiveTab] = useState('orders'); // orders, menu, service, settings
+  const [kitchenMode, setKitchenMode] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [serviceRequests, setServiceRequests] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [modalMode, setModalMode] = useState('add'); // add, edit
@@ -21,6 +24,12 @@ const Dashboard = () => {
   const [restaurantData, setRestaurantData] = useState(null);
   const [tableInput, setTableInput] = useState('');
   const [printOrder, setPrintOrder] = useState(null);
+  const [currentTableCard, setCurrentTableCard] = useState(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [qrColor, setQrColor] = useState('#000000');
+  const [qrLogo, setQrLogo] = useState('');
+  const [tableStats, setTableStats] = useState({});
+  const [loading, setLoading] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -42,24 +51,45 @@ const Dashboard = () => {
     socket.on('newOrder', (order) => {
       addNotification(`🎉 New Order! Table ${order.tableNumber}`, 'success');
       setOrders(prev => [order, ...prev]);
-      if (soundEnabled) playNotificationSound();
+      if (soundEnabled) {
+        playNotificationSound();
+        speak(`New order received from Table ${order.tableNumber}`);
+      }
     });
 
     socket.on('orderUpdated', (updatedOrder) => {
       setOrders(prev => prev.map(o => o._id === updatedOrder._id ? updatedOrder : o));
     });
 
+    socket.on('serviceRequest', (data) => {
+      const { type, tableNumber, customerName } = data;
+      addNotification(`🛎️ ${type} Requested! Table ${tableNumber} (${customerName})`, 'warning');
+      setServiceRequests(prev => [{ ...data, id: data._id || Date.now() }, ...prev]);
+      if (soundEnabled) {
+        playNotificationSound();
+        speak(`${type} requested for Table ${tableNumber}`);
+      }
+    });
+
     const fetchData = async () => {
       try {
         const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
-        const [menuRes, ordersRes, userRes] = await Promise.all([
+        const [menuRes, ordersRes, userRes, serviceRes] = await Promise.all([
           axios.get(`${API_BASE_URL}/api/menu/${userId}`),
           axios.get(`${API_BASE_URL}/api/orders`, { headers }),
-          axios.get(`${API_BASE_URL}/api/users/${userId}`, { headers })
+          axios.get(`${API_BASE_URL}/api/users/${userId}`, { headers }),
+          axios.get(`${API_BASE_URL}/api/service-requests/${userId}`)
         ]);
         setMenuItems(menuRes.data);
         setOrders(ordersRes.data);
         setRestaurantData(userRes.data);
+        setServiceRequests(serviceRes.data);
+        // Initialize branding states from user data
+        if (userRes.data) {
+          setQrColor(userRes.data.qrColor || '#000000');
+          setQrLogo(userRes.data.qrLogo || '');
+          setTableStats(userRes.data.tableStats || {});
+        }
       } catch (error) {
         console.error('Error fetching data:', error);
       }
@@ -79,6 +109,14 @@ const Dashboard = () => {
   const playNotificationSound = () => {
     const audio = new Audio('/notification.mp3');
     audio.play().catch(() => { });
+  };
+
+  const speak = (text) => {
+    if (!soundEnabled) return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1.1;
+    window.speechSynthesis.speak(utterance);
   };
 
   // Menu Actions
@@ -131,6 +169,43 @@ const Dashboard = () => {
     }
   };
 
+  const generateTableCard = async (tableNum) => {
+    setCurrentTableCard(tableNum);
+    addNotification(`Generating card for Table ${tableNum}...`, 'success');
+
+    // Wait for DOM to render the hidden template
+    setTimeout(async () => {
+      const element = document.getElementById('printable-table-card');
+      if (!element) return;
+
+      try {
+        const canvas = await html2canvas(element, {
+          scale: 3, // Higher scale for printing quality
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#ffffff'
+        });
+
+        const imgData = canvas.toDataURL('image/png');
+        // 4x6 inches is roughly 101.6 x 152.4 mm
+        const pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: [101.6, 152.4]
+        });
+
+        pdf.addImage(imgData, 'PNG', 0, 0, 101.6, 152.4);
+        pdf.save(`${restaurantData?.restaurantName || 'Restaurant'}_Table_${tableNum}.pdf`);
+        setCurrentTableCard(null);
+        addNotification('Table card downloaded!', 'success');
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        addNotification('Failed to generate card.', 'error');
+        setCurrentTableCard(null);
+      }
+    }, 500);
+  };
+
   const toggleAvailability = async (item) => {
     try {
       const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
@@ -178,6 +253,26 @@ const Dashboard = () => {
     if (order.status !== 'billed' && order.status !== 'complete') {
       updateOrderStatus(order._id, 'billed');
       addNotification(`Bill generated for Table ${order.tableNumber}`, 'success');
+    }
+  };
+
+  const clearServiceRequest = async (id) => {
+    try {
+      await axios.delete(`${API_BASE_URL}/api/service-requests/${id}`);
+      setServiceRequests(prev => prev.filter(r => r._id !== id && r.id !== id));
+      addNotification('Service request handled');
+    } catch (err) {
+      console.error('Error clearing service request:', err);
+      addNotification('Error clearing request', 'error');
+    }
+  };
+
+  const getServiceIcon = (type) => {
+    switch (type.toLowerCase()) {
+      case 'water': return 'fa-tint';
+      case 'waiter': return 'fa-user-tie';
+      case 'cutlery': return 'fa-utensils';
+      default: return 'fa-bell';
     }
   };
 
@@ -234,6 +329,7 @@ const Dashboard = () => {
   // Restaurant Actions
   const handleUpdateTables = async (newTables) => {
     try {
+      setLoading(true);
       const userId = localStorage.getItem('userId');
       const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
       const res = await axios.put(`${API_BASE_URL}/api/users/${userId}`, {
@@ -241,10 +337,35 @@ const Dashboard = () => {
         tables: newTables
       }, { headers });
       setRestaurantData(res.data);
+      setQrColor(res.data.qrColor || '#000000');
+      setQrLogo(res.data.qrLogo || '');
+      setTableStats(res.data.tableStats || {});
+      setLoading(false);
       addNotification('Tables updated successfully', 'success');
     } catch (error) {
       console.error(error);
       addNotification('Error updating tables', 'error');
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateBranding = async () => {
+    try {
+      setLoading(true);
+      const userId = localStorage.getItem('userId');
+      const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
+      const res = await axios.put(`${API_BASE_URL}/api/users/${userId}`, {
+        restaurantName: restaurantData.restaurantName,
+        qrColor,
+        qrLogo
+      }, { headers });
+      setRestaurantData(res.data);
+      addNotification('Branding updated successfully!', 'success');
+    } catch (error) {
+      console.error(error);
+      addNotification('Failed to update branding', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -296,6 +417,81 @@ const Dashboard = () => {
     img.src = url;
   };
 
+  const bulkDownloadQRs = async () => {
+    if (!restaurantData?.tables || restaurantData.tables.length === 0) {
+      addNotification('No tables to export', 'error');
+      return;
+    }
+
+    setIsExporting(true);
+    addNotification('Preparing bulk export...', 'success');
+
+    // Wait for the hidden QRs to render
+    setTimeout(async () => {
+      try {
+        const zip = new JSZip();
+        const exportContainer = document.getElementById('qr-bulk-export-container');
+        const qrElements = exportContainer.querySelectorAll('.qr-bulk-item');
+
+        for (let i = 0; i < qrElements.length; i++) {
+          const el = qrElements[i];
+          const tableNum = el.getAttribute('data-table');
+
+          const canvas = await html2canvas(el, {
+            scale: 2,
+            backgroundColor: '#ffffff',
+            logging: false
+          });
+
+          const imgData = canvas.toDataURL('image/png').split(',')[1];
+          zip.file(`Table_${tableNum}_QR.png`, imgData, { base64: true });
+        }
+
+        const content = await zip.generateAsync({ type: 'blob' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = `${restaurantData.restaurantName || 'Restaurant'}_ALL_QRs.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        setIsExporting(false);
+        addNotification('Bulk export complete!', 'success');
+      } catch (err) {
+        console.error('Bulk export error:', err);
+        addNotification('Failed to generate ZIP', 'error');
+        setIsExporting(false);
+      }
+    }, 1000);
+  };
+
+
+  const renderServiceBoard = () => (
+    <div className="service-board-premium">
+      <div className="board-header">
+        <h3>🛎️ Live Service Alerts</h3>
+        <span className="request-count">{serviceRequests.length} Pending</span>
+      </div>
+      <div className="service-grid">
+        {serviceRequests.map((req) => (
+          <div key={req._id || req.id} className={`service-card-alert ${req.type.toLowerCase()}`}>
+            <div className="alert-icon">
+              <i className={`fas ${getServiceIcon(req.type)}`}></i>
+            </div>
+            <div className="alert-info">
+              <span className="alert-type">{req.type}</span>
+              <span className="alert-table">Table {req.tableNumber}</span>
+              <span className="alert-customer">guest: {req.customerName}</span>
+            </div>
+            <button className="handled-btn" onClick={() => clearServiceRequest(req._id || req.id)}>
+              Handled
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
   // Render Functions
   const renderOrders = () => {
     // Only show orders that are NOT complete or cancelled in the live board
@@ -308,45 +504,53 @@ const Dashboard = () => {
     };
 
     return (
-      <div className="kanban-board">
-        {/* Pending Column */}
-        <div className="kanban-column status-pending">
-          <h3>🕒 Pending <span className="count">{columns.pending.length}</span></h3>
-          {columns.pending.map(order => (
-            <OrderCard key={order._id} order={order}
-              onNext={() => updateOrderStatus(order._id, 'process')}
-              onCancel={() => updateOrderStatus(order._id, 'cancelled')}
-            />
-          ))}
-        </div>
+      <>
+        <div className="kanban-board">
+          {/* Pending Column */}
+          <div className="kanban-column status-pending">
+            <h3>🕒 New Orders <span className="count">{columns.pending.length}</span></h3>
+            {columns.pending.map(order => (
+              <OrderCard key={order._id} order={order}
+                onNext={() => updateOrderStatus(order._id, 'process')}
+                onCancel={() => updateOrderStatus(order._id, 'cancelled')}
+                nextLabel="Accept"
+                cancelLabel="Reject"
+              />
+            ))}
+          </div>
 
-        {/* Processing Column */}
-        <div className="kanban-column status-process">
-          <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
-          {columns.process.map(order => (
-            <OrderCard key={order._id} order={order}
-              onPrev={() => updateOrderStatus(order._id, 'pending')}
-              onNext={() => updateOrderStatus(order._id, 'ready')}
-              onGenerateBill={() => handleGenerateBill(order)}
-              onDownload={() => handleDownloadBill(order)}
-            />
-          ))}
-        </div>
+          {/* Processing Column */}
+          <div className="kanban-column status-process">
+            <h3>🔥 Preparing <span className="count">{columns.process.length}</span></h3>
+            {columns.process.map(order => (
+              <OrderCard key={order._id} order={order}
+                onPrev={() => updateOrderStatus(order._id, 'pending')}
+                onNext={() => updateOrderStatus(order._id, 'ready')}
+                onGenerateBill={() => handleGenerateBill(order)}
+                onDownload={() => handleDownloadBill(order)}
+                nextLabel="Ready"
+                prevLabel="Back"
+              />
+            ))}
+          </div>
 
-        {/* Completed/Ready Column */}
-        <div className="kanban-column status-complete">
-          <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
-          {columns.ready.map(order => (
-            <OrderCard key={order._id} order={order}
-              onPrev={() => updateOrderStatus(order._id, 'process')}
-              onNext={() => updateOrderStatus(order._id, 'complete')}
-              onGenerateBill={() => handleGenerateBill(order)}
-              onDownload={() => handleDownloadBill(order)}
-              isReady
-            />
-          ))}
+          {/* Completed/Ready Column */}
+          <div className="kanban-column status-complete">
+            <h3>✅ Ready <span className="count">{columns.ready.length}</span></h3>
+            {columns.ready.map(order => (
+              <OrderCard key={order._id} order={order}
+                onPrev={() => updateOrderStatus(order._id, 'process')}
+                onNext={() => updateOrderStatus(order._id, 'complete')}
+                onGenerateBill={() => handleGenerateBill(order)}
+                onDownload={() => handleDownloadBill(order)}
+                nextLabel="Serve"
+                prevLabel="Back"
+                isReady
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      </>
     );
   };
 
@@ -419,8 +623,29 @@ const Dashboard = () => {
           <p>Scan to view your digital menu</p>
         </div>
         <div className="qr-preview-wrapper">
-          <div className="settings-qr-container">
-            <QRCode value={`${window.location.origin}/menu/${localStorage.getItem('userId')}`} size={180} />
+          <div className="settings-qr-container" style={{ borderColor: qrColor }}>
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <QRCode
+                value={`${window.location.origin}/menu/${localStorage.getItem('userId')}`}
+                size={180}
+                fgColor={qrColor}
+                level="H"
+              />
+              {qrLogo && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  background: 'white',
+                  padding: '5px',
+                  borderRadius: '4px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+                }}>
+                  <img src={qrLogo} alt="Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                </div>
+              )}
+            </div>
           </div>
           <div className="qr-actions-grid">
             <a className="qr-action-tile" href={`/menu/${localStorage.getItem('userId')}`} target="_blank" rel="noreferrer">
@@ -431,11 +656,45 @@ const Dashboard = () => {
               <span className="tile-icon">📥</span>
               <span className="tile-text">Download</span>
             </button>
-            <button className="qr-action-tile" onClick={() => window.print()}>
-              <span className="tile-icon">🖨️</span>
-              <span className="tile-text">Print All</span>
+            <button className="qr-action-tile" onClick={bulkDownloadQRs}>
+              <span className="tile-icon">📦</span>
+              <span className="tile-text">Get All (ZIP)</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* 2. Premium Branding */}
+      <div className="settings-card branding-section">
+        <div className="card-header-main">
+          <h2>🎨 Premium Branding</h2>
+          <p>Customize your QR code theme</p>
+        </div>
+        <div className="branding-controls">
+          <div className="control-group">
+            <label>QR Theme Color</label>
+            <div className="color-picker-wrapper">
+              <input
+                type="color"
+                value={qrColor}
+                onChange={(e) => setQrColor(e.target.value)}
+              />
+              <span className="color-hex">{qrColor.toUpperCase()}</span>
+            </div>
+          </div>
+          <div className="control-group">
+            <label>Center Logo URL</label>
+            <input
+              type="text"
+              className="interactive-input"
+              placeholder="https://example.com/logo.png"
+              value={qrLogo}
+              onChange={(e) => setQrLogo(e.target.value)}
+            />
+          </div>
+          <button className="btn-primary" onClick={handleUpdateBranding} style={{ marginTop: '10px' }}>
+            Save Theme Settings
+          </button>
         </div>
       </div>
 
@@ -461,6 +720,7 @@ const Dashboard = () => {
               <div key={num} className="table-chip">
                 <span>Table {num}</span>
                 <div className="table-actions-inline">
+                  <button className="table-card-btn" onClick={() => generateTableCard(num)} title="Generate Branded Table Card">🎴</button>
                   <a href={`${window.location.origin}/menu/${localStorage.getItem('userId')}?table=${num}`} target="_blank" rel="noreferrer" title="Open table menu">🔗</a>
                   <button className="remove-table" onClick={() => removeTable(num)}>&times;</button>
                 </div>
@@ -468,6 +728,46 @@ const Dashboard = () => {
             ))}
             {(!restaurantData?.tables || restaurantData.tables.length === 0) && (
               <div className="empty-state">No tables added yet.</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Table Engagement Analytics */}
+      <div className="settings-card analytics-section">
+        <div className="card-header-main">
+          <h2>📊 Table Engagement</h2>
+          <p>Real-time scan analytics by table</p>
+        </div>
+        <div className="analytics-content">
+          <div className="stats-grid">
+            {restaurantData?.tables && restaurantData.tables.length > 0 ? (
+              restaurantData.tables.map(num => {
+                const count = tableStats ? (tableStats[num] || 0) : 0;
+                const statsArray = tableStats ? Object.values(tableStats) : [0];
+                const maxCount = Math.max(...statsArray, 1);
+                const percentage = (count / maxCount) * 100;
+
+                return (
+                  <div key={num} className="stat-row">
+                    <div className="stat-info">
+                      <span className="stat-label">Table {num}</span>
+                      <span className="stat-value">{count} scans</span>
+                    </div>
+                    <div className="stat-bar-outer">
+                      <div
+                        className="stat-bar-inner"
+                        style={{
+                          width: `${percentage}%`,
+                          backgroundColor: qrColor
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="empty-state">No tables configured for analytics.</div>
             )}
           </div>
         </div>
@@ -511,7 +811,7 @@ const Dashboard = () => {
   );
 
   return (
-    <div className="dashboard-container">
+    <div className={`dashboard-container ${kitchenMode ? 'kitchen-mode-active' : ''}`}>
       {/* Notifications */}
       <div className="notification-container">
         {notifications.map(n => (
@@ -538,6 +838,19 @@ const Dashboard = () => {
             🍔 Menu Manager
           </button>
           <button
+            className={`tab-btn ${activeTab === 'service' ? 'active' : ''}`}
+            onClick={() => setActiveTab('service')}
+          >
+            🛎️ Hospitality {serviceRequests.length > 0 && <span className="tab-badge">{serviceRequests.length}</span>}
+          </button>
+          <button
+            className={`tab-btn kitchen-mode-btn ${kitchenMode ? 'active' : ''}`}
+            onClick={() => setKitchenMode(!kitchenMode)}
+            title="Toggle High Contrast Kitchen Mode"
+          >
+            {kitchenMode ? '☀️ Normal' : '🌑 Kitchen Mode'}
+          </button>
+          <button
             className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
             onClick={() => setActiveTab('settings')}
           >
@@ -550,6 +863,7 @@ const Dashboard = () => {
       <div className="dashboard-content">
         {activeTab === 'orders' && renderOrders()}
         {activeTab === 'menu' && renderMenu()}
+        {activeTab === 'service' && renderServiceBoard()}
         {activeTab === 'settings' && renderSettings()}
       </div>
 
@@ -655,52 +969,131 @@ const Dashboard = () => {
       )}
       {/* DEDICATED PRINTABLE BILL TEMPLATE (Hidden by default) */}
       {printOrder && (
-        <div className="printable-bill-template">
-          <div className="bill-header">
-            <h1>{restaurantData?.restaurantName || 'RESTAURANT'}</h1>
-            <p className="bill-subtitle">Restaurant-Bill Receipt</p>
+        <div id="printable-bill-container" style={{ position: 'fixed', left: '-9999px', top: '-9999px' }}>
+          <div className="printable-bill-template">
+            <div className="bill-header">
+              <h1>{restaurantData?.restaurantName || 'RESTAURANT'}</h1>
+              <p className="bill-subtitle">Restaurant-Bill Receipt</p>
+              <div className="bill-divider"></div>
+            </div>
+
+            <div className="bill-info">
+              <p><span>Order ID:</span> <span>#{printOrder._id.slice(-6).toUpperCase()}</span></p>
+              <p><span>Date:</span> <span>{new Date(printOrder.createdAt).toLocaleString()}</span></p>
+              <p><span>Customer:</span> <span>{printOrder.customerName || 'Guest'}</span></p>
+              <p><span>Table No:</span> <span>{printOrder.tableNumber}</span></p>
+            </div>
+
             <div className="bill-divider"></div>
-          </div>
 
-          <div className="bill-info">
-            <p><span>Order ID:</span> <span>#{printOrder._id.slice(-6).toUpperCase()}</span></p>
-            <p><span>Date:</span> <span>{new Date(printOrder.createdAt).toLocaleString()}</span></p>
-            <p><span>Customer:</span> <span>{printOrder.customerName || 'Guest'}</span></p>
-            <p><span>Table No:</span> <span>{printOrder.tableNumber}</span></p>
-          </div>
-
-          <div className="bill-divider"></div>
-
-          <table className="bill-table">
-            <thead>
-              <tr>
-                <th className="text-left">Item</th>
-                <th className="text-center">Qty</th>
-                <th className="text-right">Price</th>
-              </tr>
-            </thead>
-            <tbody>
-              {printOrder.items.map((item, index) => (
-                <tr key={index}>
-                  <td className="text-left">{item.menuItemName}</td>
-                  <td className="text-center">{item.quantity}</td>
-                  <td className="text-right">₹{(item.price * item.quantity).toFixed(2)}</td>
+            <table className="bill-table">
+              <thead>
+                <tr>
+                  <th className="text-left">Item</th>
+                  <th className="text-center">Qty</th>
+                  <th className="text-right">Price</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {printOrder.items.map((item, index) => (
+                  <tr key={index}>
+                    <td className="text-left">
+                      {item.menuItemName}
+                      {item.notes && <div style={{ fontSize: '10px', color: '#666', fontStyle: 'italic', marginTop: '2px' }}>Note: {item.notes}</div>}
+                    </td>
+                    <td className="text-center">{item.quantity}</td>
+                    <td className="text-right">₹{(item.price * item.quantity).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          <div className="bill-divider"></div>
+            <div className="bill-divider"></div>
 
-          <div className="bill-total-row">
-            <span>Total Amount</span>
-            <span>₹{printOrder.totalAmount?.toFixed(2)}</span>
+            <div className="bill-total-row">
+              <span>Total Amount</span>
+              <span>₹{printOrder.totalAmount?.toFixed(2)}</span>
+            </div>
+
+            <div className="bill-footer">
+              <p>Restaurant Copy</p>
+              <p>Generated by QR Menu Pro</p>
+            </div>
           </div>
+        </div>
+      )}
 
-          <div className="bill-footer">
-            <p>Restaurant Copy</p>
-            <p>Generated by QR Menu Pro</p>
+      {/* 4. DEDICATED PRINTABLE TABLE CARD (Hidden) */}
+      {currentTableCard && (
+        <div id="printable-table-card" className="table-card-print-template">
+          <div className="table-card-logo">
+            {restaurantData?.restaurantName || 'RESTAURANT'}
           </div>
+          <div className="table-card-qr-box">
+            <div style={{ position: 'relative', display: 'inline-block' }}>
+              <QRCode
+                value={`${window.location.origin}/menu/${localStorage.getItem('userId')}?table=${currentTableCard}`}
+                size={250}
+                fgColor={qrColor}
+                level="H"
+              />
+              {qrLogo && (
+                <div style={{
+                  position: 'absolute',
+                  top: '50%',
+                  left: '50%',
+                  transform: 'translate(-50%, -50%)',
+                  background: 'white',
+                  padding: '8px',
+                  borderRadius: '6px'
+                }}>
+                  <img src={qrLogo} alt="Logo" style={{ width: '45px', height: '45px', objectFit: 'contain' }} />
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="table-card-table-num">
+            Table No. {currentTableCard}
+          </div>
+          <div className="table-card-instructions">
+            Scan to view our menu & order directly from your phone
+          </div>
+          <div className="table-card-footer">
+            Generated by QR Menu Pro
+          </div>
+        </div>
+      )}
+
+      {/* 5. HIDDEN BULK EXPORT CONTAINER */}
+      {isExporting && (
+        <div id="qr-bulk-export-container" style={{ position: 'fixed', left: '-9999px', top: '-9999px' }}>
+          {restaurantData?.tables.map(num => (
+            <div key={num} className="qr-bulk-item" data-table={num} style={{ background: 'white', padding: '20px', textAlign: 'center' }}>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '10px' }}>Table {num}</div>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <QRCode
+                  value={`${window.location.origin}/menu/${localStorage.getItem('userId')}?table=${num}`}
+                  size={200}
+                  fgColor={qrColor}
+                  level="H"
+                />
+                {qrLogo && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    background: 'white',
+                    padding: '5px',
+                    borderRadius: '4px'
+                  }}>
+                    <img src={qrLogo} alt="Logo" style={{ width: '30px', height: '30px', objectFit: 'contain' }} />
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: '12px', color: '#666', marginTop: '10px' }}>{restaurantData.restaurantName}</div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -708,64 +1101,106 @@ const Dashboard = () => {
 };
 
 // Helper Component for Order Card
-const OrderCard = ({ order, onNext, onPrev, onCancel, onGenerateBill, onDownload, isReady, isCompleted }) => (
-  <div className={`kanban-card ${isReady ? 'ready-card' : ''}`}>
-    <div className="card-header">
-      <div className="header-top">
-        <span className="table-badge">T-{order.tableNumber}</span>
-        <span className="time-badge">{new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-      </div>
-      <div className="customer-info-compact">
-        <span className="customer-name-small">{order.customerName || 'Guest'}</span>
-      </div>
-    </div>
-    <div className="card-items-compact">
-      {order.items.map((item, i) => (
-        <div key={i} className="card-item-compact">
-          <span className="item-qty-compact">{item.quantity}x</span>
-          <span className="item-name-compact">{item.menuItemName}</span>
-        </div>
-      ))}
-    </div>
-    <div className="card-footer-compact">
-      <div className="total-section-compact">
-        <span className="total-price-compact">₹{order.totalAmount}</span>
-        {order.status === 'billed' && <span className="billed-indicator">Billed</span>}
-      </div>
-      {!isCompleted && (
-        <div className="card-actions-compact">
-          {onCancel && <button className="compact-action-btn btn-cancel" onClick={onCancel} title="Cancel">✕</button>}
-          {onPrev && <button className="compact-action-btn btn-prev" onClick={onPrev} title="Back">←</button>}
+const OrderCard = ({ order, onNext, onPrev, onCancel, onGenerateBill, onDownload, isReady, isCompleted, nextLabel, prevLabel, cancelLabel }) => {
+  const [elapsed, setElapsed] = useState('');
+  const [isUrgent, setIsUrgent] = useState(false);
 
-          {onGenerateBill && (
-            <button
-              className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-gen-bill'}`}
-              onClick={onGenerateBill}
-              title="Generate Bill"
-              style={{ fontSize: '10px', fontWeight: 'bold' }}
-            >
-              BILL
-            </button>
-          )}
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const start = new Date(order.createdAt);
+      const now = new Date();
+      const diffInMins = Math.floor((now - start) / 60000);
+      const diffInSecs = Math.floor(((now - start) / 1000) % 600);
 
-          {onDownload && (
-            <button
-              className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-print'}`}
-              onClick={onDownload}
-              title="Download Receipt"
-            >
-              📥
-            </button>
-          )}
-          {onNext && (
-            <button className="compact-action-btn btn-next" onClick={onNext} title={isReady ? "Complete" : "Next"}>
-              {isReady ? '✓' : '➜'}
-            </button>
-          )}
+      setElapsed(`${diffInMins}m ${diffInSecs % 60}s`);
+      if (diffInMins >= 10 && order.status === 'pending') {
+        setIsUrgent(true);
+      } else {
+        setIsUrgent(false);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [order.createdAt, order.status]);
+
+  return (
+    <div className={`kanban-card ${isReady ? 'ready-card' : ''} ${isUrgent ? 'urgent-border' : ''}`}>
+      <div className="card-header">
+        <div className="header-top">
+          <span className="table-badge">T-{order.tableNumber}</span>
+          <div className="time-badge">
+            <span className={`urgency-timer ${isUrgent ? 'urgency-urgent' : ''}`}>
+              <i className="far fa-clock"></i> {elapsed}
+            </span>
+          </div>
         </div>
-      )}
+        <div className="customer-info-compact">
+          <span className="customer-name-small">{order.customerName || 'Guest'}</span>
+        </div>
+      </div>
+      <div className="card-items-compact">
+        {order.items.map((item, i) => (
+          <div key={i} className="card-item-compact">
+            <div className="item-main-compact">
+              <span className="item-qty-compact">{item.quantity}x</span>
+              <span className="item-name-compact">{item.menuItemName}</span>
+            </div>
+            {item.notes && (
+              <div className="item-notes-compact">
+                <i className="fas fa-pen-nib"></i> {item.notes}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="card-footer-compact">
+        <div className="total-section-compact">
+          <span className="total-price-compact">₹{order.totalAmount}</span>
+          {order.status === 'billed' && <span className="billed-indicator">Billed</span>}
+        </div>
+        {!isCompleted && (
+          <div className="card-actions-compact">
+            {onCancel && (
+              <button className="compact-action-btn btn-cancel-wide" onClick={onCancel} title="Reject">
+                <i className="fas fa-times"></i> {cancelLabel || 'Reject'}
+              </button>
+            )}
+
+            {onPrev && (
+              <button className="compact-action-btn btn-prev" onClick={onPrev} title="Back">
+                <i className="fas fa-arrow-left"></i>
+              </button>
+            )}
+
+            {onGenerateBill && (
+              <button
+                className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-gen-bill'}`}
+                onClick={onGenerateBill}
+                title="Generate Bill"
+              >
+                BILL
+              </button>
+            )}
+
+            {onDownload && (
+              <button
+                className={`compact-action-btn ${order.status === 'billed' ? 'btn-billed' : 'btn-print'}`}
+                onClick={onDownload}
+                title="Download Receipt"
+              >
+                📥
+              </button>
+            )}
+
+            {onNext && (
+              <button className={`compact-action-btn btn-next-wide ${isReady ? 'btn-serve' : ''}`} onClick={onNext} title={nextLabel}>
+                {nextLabel || 'Next'} <i className={`fas ${isReady ? 'fa-check-double' : 'fa-arrow-right'}`}></i>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default Dashboard;
