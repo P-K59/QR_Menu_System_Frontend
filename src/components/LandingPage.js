@@ -4,6 +4,12 @@ import QRCode from 'react-qr-code';
 import './LandingPage.css';
 
 const LandingPage = () => {
+  const [qrValue, setQrValue] = React.useState('');
+
+  React.useEffect(() => {
+    setQrValue(`${window.location.origin}/demo`);
+  }, []);
+
   return (
     <div className="landing-page">
       {/* Hero Section with Mesh Gradient */}
@@ -39,7 +45,11 @@ const LandingPage = () => {
                 <span>SCAN ME</span>
               </div>
               <div className="qr-body">
-                <QRCode value={`${window.location.origin}/demo`} size={220} fgColor="#2d3436" />
+                {qrValue ? (
+                  <QRCode value={qrValue} size={220} fgColor="#2d3436" />
+                ) : (
+                  <div style={{ width: 220, height: 220, background: '#f0f0f0' }}></div>
+                )}
               </div>
               <div className="qr-footer">
                 <p>Try it yourself</p>
